@@ -30,7 +30,7 @@ export async function registerRoutes(
   let shouldStop = false;
 
   // Function to check a single card using Python script
-  const checkCardWithPython = (card: string, siteUrl: string, proxy: string): Promise<{status: string, message: string}> => {
+  const checkCardWithPython = (card: string, siteUrl: string, proxy: string, onLog: (msg: string) => void): Promise<{status: string, message: string}> => {
     return new Promise((resolve) => {
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
       
@@ -39,19 +39,23 @@ export async function registerRoutes(
       });
       
       let stdout = '';
-      let stderr = '';
       
       pythonProcess.stdout.on('data', (data) => {
         stdout += data.toString();
       });
       
+      // Stream logs from stderr in real-time
       pythonProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
+        const logLines = data.toString().trim().split('\n');
+        for (const line of logLines) {
+          if (line.startsWith('[LOG]')) {
+            onLog(line.replace('[LOG] ', ''));
+          }
+        }
       });
       
       pythonProcess.on('close', (code) => {
         try {
-          // Try to parse the last line as JSON (in case there's debug output)
           const lines = stdout.trim().split('\n');
           const lastLine = lines[lines.length - 1];
           const result = JSON.parse(lastLine);
@@ -59,13 +63,13 @@ export async function registerRoutes(
         } catch (e) {
           resolve({ 
             status: 'error', 
-            message: stderr || stdout || 'Python script failed' 
+            message: '[ERROR] Python script failed' 
           });
         }
       });
       
       pythonProcess.on('error', (err) => {
-        resolve({ status: 'error', message: `Process error: ${err.message}` });
+        resolve({ status: 'error', message: `[ERROR] Process: ${err.message}` });
       });
     });
   };
@@ -103,10 +107,15 @@ export async function registerRoutes(
       const proxyIndex = processedCount % (proxies.length || 1);
       const currentProxy = proxies[proxyIndex] || '';
 
-      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Checking: ${trimmedCard.substring(0, 6)}...`, type: 'info' } });
+      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Checking: ${trimmedCard.substring(0, 6)}****`, type: 'info' } });
 
       try {
-        const result = await checkCardWithPython(trimmedCard, targetUrl, currentProxy);
+        // Log callback for real-time Python logs
+        const onLog = (msg: string) => {
+          broadcast({ type: WS_EVENTS.LOG, payload: { message: msg, type: 'info' } });
+        };
+        
+        const result = await checkCardWithPython(trimmedCard, targetUrl, currentProxy, onLog);
         
         // Normalize status
         let status = 'unknown';
