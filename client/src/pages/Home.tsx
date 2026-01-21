@@ -56,6 +56,8 @@ export default function Home() {
     
     if (cards.length === 0) return;
     
+    // Clear local results before starting new check
+    clearLocalResults();
     startCheck.mutate(cards);
   };
 

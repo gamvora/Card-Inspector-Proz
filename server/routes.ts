@@ -28,15 +28,33 @@ export async function registerRoutes(
   // === Job Management ===
   let isRunning = false;
   let shouldStop = false;
+  const activeProcesses: Set<ReturnType<typeof spawn>> = new Set();
+
+  // Kill all active Python processes
+  const killAllProcesses = () => {
+    activeProcesses.forEach(proc => {
+      try {
+        proc.kill('SIGTERM');
+      } catch (e) {}
+    });
+    activeProcesses.clear();
+  };
 
   // Function to check a single card using Python script
   const checkCardWithPython = (card: string, siteUrl: string, proxy: string, onLog: (msg: string) => void): Promise<{status: string, message: string}> => {
     return new Promise((resolve) => {
+      if (shouldStop) {
+        resolve({ status: 'error', message: '[STOPPED] Cancelled by user' });
+        return;
+      }
+
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
       
       const pythonProcess = spawn('python', [scriptPath, card, siteUrl, proxy], {
         timeout: 120000 // 2 minute timeout per card
       });
+      
+      activeProcesses.add(pythonProcess);
       
       let stdout = '';
       
@@ -55,6 +73,13 @@ export async function registerRoutes(
       });
       
       pythonProcess.on('close', (code) => {
+        activeProcesses.delete(pythonProcess);
+        
+        if (shouldStop) {
+          resolve({ status: 'error', message: '[STOPPED] Cancelled by user' });
+          return;
+        }
+        
         try {
           const lines = stdout.trim().split('\n');
           const lastLine = lines[lines.length - 1];
@@ -69,6 +94,7 @@ export async function registerRoutes(
       });
       
       pythonProcess.on('error', (err) => {
+        activeProcesses.delete(pythonProcess);
         resolve({ status: 'error', message: `[ERROR] Process: ${err.message}` });
       });
     });
@@ -88,6 +114,8 @@ export async function registerRoutes(
     const total = cards.length;
     let processedCount = 0;
 
+    // Broadcast ACTIVE status immediately
+    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: total } });
     broadcast({ type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
     broadcast({ type: WS_EVENTS.LOG, payload: { message: `${total} cards | ${proxies.length} proxies | Batch: ${BATCH_SIZE}`, type: 'info' } });
 
@@ -116,11 +144,17 @@ export async function registerRoutes(
 
         try {
           const onLog = (msg: string) => {
+            if (shouldStop) return; // Don't log if stopped
             const cardPrefix = cardStr.substring(0, 6);
             broadcast({ type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
           };
           
           const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, onLog);
+          
+          // Skip saving cancelled/stopped cards
+          if (shouldStop || result.message?.includes('[STOPPED]')) {
+            return { success: false, stopped: true };
+          }
           
           let status = 'unknown';
           if (result.status === 'live') status = 'live';
@@ -141,23 +175,35 @@ export async function registerRoutes(
             broadcast({ type: WS_EVENTS.LOG, payload: { message: `DEAD: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
           }
 
-          return { success: true };
+          return { success: true, stopped: false };
         } catch (e: any) {
-          broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
-          return { success: false };
+          if (!shouldStop) {
+            broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
+          }
+          return { success: false, stopped: shouldStop };
         }
       });
 
       // Wait for all cards in batch to complete
-      await Promise.all(batchPromises);
+      const batchResults = await Promise.all(batchPromises);
       
-      processedCount += batch.length;
-      broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total: validCards.length } });
+      // Only count cards that were actually processed (not stopped)
+      const actuallyProcessed = batchResults.filter(r => !r.stopped).length;
+      processedCount += actuallyProcessed;
+      
+      if (!shouldStop) {
+        broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total: validCards.length } });
+      }
     }
 
     isRunning = false;
-    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total: validCards.length } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: `Finished! ${processedCount}/${validCards.length} processed.`, type: 'info' } });
+    
+    if (shouldStop) {
+      // Already handled in stop endpoint
+    } else {
+      broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total: validCards.length } });
+      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Finished! ${processedCount}/${validCards.length} processed.`, type: 'info' } });
+    }
   };
 
   // === API Routes ===
@@ -190,15 +236,23 @@ export async function registerRoutes(
       return res.status(400).json({ message: 'Target URL not configured' });
     }
 
+    // Clear all previous results before starting new check
+    await storage.clearResults();
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Cleared previous results', type: 'info' } });
+
     // Start background process (don't await)
     processQueue(cards, settings.targetUrl, settings.proxyList || '');
     
     res.json({ message: 'Job started', jobId: '1' });
   });
 
-  app.post(api.check.stop.path, (req, res) => {
+  app.post(api.check.stop.path, async (req, res) => {
     shouldStop = true;
-    res.json({ message: 'Stopping...' });
+    killAllProcesses();
+    isRunning = false;
+    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: 0, total: 0 } });
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: 'STOPPED - All processes killed', type: 'error' } });
+    res.json({ message: 'Stopped' });
   });
 
   app.post(api.check.clear.path, async (req, res) => {
