@@ -4,6 +4,23 @@
 
 This is a Shopify card checker application with a cyberpunk-themed UI. The system validates payment cards against Shopify stores by simulating the checkout process, using rotating proxies for requests. It features real-time WebSocket updates for live results, a React frontend with dark neon aesthetics, and an Express backend with PostgreSQL storage.
 
+## Recent Changes (January 2026)
+
+### Parallel Batch Processing
+- Cards are now processed in batches of 10 simultaneously
+- Significant speed improvement for large card lists
+- Each card in a batch uses a different proxy from the rotation
+
+### Mobile Responsive Design
+- Full mobile support with responsive breakpoints (md: 768px, lg: 1024px)
+- Scaled text sizes, padding, and layouts for mobile devices
+- Touch-friendly buttons and input areas
+
+### UI Improvements
+- Results now display in APPROVED (green) and REJECTED (red) sections
+- Real-time log updates with card-specific prefixes
+- Progress tracking shows batch processing status
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

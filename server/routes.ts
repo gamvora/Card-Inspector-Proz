@@ -74,6 +74,8 @@ export async function registerRoutes(
     });
   };
 
+  const BATCH_SIZE = 10; // Process 10 cards in parallel
+
   const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string) => {
     isRunning = true;
     shouldStop = false;
@@ -87,71 +89,75 @@ export async function registerRoutes(
     let processedCount = 0;
 
     broadcast({ type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: `${total} cards to process, ${proxies.length} proxies configured`, type: 'info' } });
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: `${total} cards | ${proxies.length} proxies | Batch: ${BATCH_SIZE}`, type: 'info' } });
 
-    // Process cards one by one (sequential for stability)
-    for (const cardStr of cards) {
+    // Filter valid cards
+    const validCards = cards
+      .map(c => c.trim())
+      .filter(c => c && c.includes('|'));
+
+    // Process cards in batches of BATCH_SIZE
+    for (let i = 0; i < validCards.length; i += BATCH_SIZE) {
       if (shouldStop) {
         broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Stopped by user', type: 'info' } });
         break;
       }
 
-      const trimmedCard = cardStr.trim();
-      if (!trimmedCard || !trimmedCard.includes('|')) {
-        processedCount++;
-        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Skipped invalid: ${trimmedCard}`, type: 'error' } });
-        continue;
-      }
+      const batch = validCards.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(validCards.length / BATCH_SIZE);
+      
+      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches} - Processing ${batch.length} cards...`, type: 'info' } });
 
-      // Rotate proxy
-      const proxyIndex = processedCount % (proxies.length || 1);
-      const currentProxy = proxies[proxyIndex] || '';
+      // Process batch in parallel
+      const batchPromises = batch.map(async (cardStr, idx) => {
+        const proxyIndex = (i + idx) % (proxies.length || 1);
+        const currentProxy = proxies[proxyIndex] || '';
 
-      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Checking: ${trimmedCard.substring(0, 6)}****`, type: 'info' } });
+        try {
+          const onLog = (msg: string) => {
+            const cardPrefix = cardStr.substring(0, 6);
+            broadcast({ type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
+          };
+          
+          const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, onLog);
+          
+          let status = 'unknown';
+          if (result.status === 'live') status = 'live';
+          else if (result.status === 'dead' || result.status === 'error') status = 'dead';
+          else status = 'unknown';
 
-      try {
-        // Log callback for real-time Python logs
-        const onLog = (msg: string) => {
-          broadcast({ type: WS_EVENTS.LOG, payload: { message: msg, type: 'info' } });
-        };
-        
-        const result = await checkCardWithPython(trimmedCard, targetUrl, currentProxy, onLog);
-        
-        // Normalize status
-        let status = 'unknown';
-        if (result.status === 'live') status = 'live';
-        else if (result.status === 'dead' || result.status === 'error') status = 'dead';
-        else status = 'unknown';
+          const saved = await storage.addResult({
+            card: cardStr,
+            status: status,
+            message: result.message || 'No message'
+          });
 
-        // Save to database
-        const saved = await storage.addResult({
-          card: trimmedCard,
-          status: status,
-          message: result.message || 'No message'
-        });
+          broadcast({ type: WS_EVENTS.RESULT, payload: saved });
 
-        broadcast({ type: WS_EVENTS.RESULT, payload: saved });
+          if (status === 'live') {
+            broadcast({ type: WS_EVENTS.LOG, payload: { message: `LIVE: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'success' } });
+          } else {
+            broadcast({ type: WS_EVENTS.LOG, payload: { message: `DEAD: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
+          }
 
-        // Log based on status
-        if (status === 'live') {
-          broadcast({ type: WS_EVENTS.LOG, payload: { message: `LIVE: ${trimmedCard.substring(0, 6)}*** | ${result.message}`, type: 'success' } });
-        } else if (status === 'dead') {
-          broadcast({ type: WS_EVENTS.LOG, payload: { message: `DEAD: ${trimmedCard.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
-        } else {
-          broadcast({ type: WS_EVENTS.LOG, payload: { message: `UNKNOWN: ${trimmedCard.substring(0, 6)}*** | ${result.message}`, type: 'info' } });
+          return { success: true };
+        } catch (e: any) {
+          broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
+          return { success: false };
         }
+      });
 
-      } catch (e: any) {
-        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error: ${e.message}`, type: 'error' } });
-      }
-
-      processedCount++;
-      broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total } });
+      // Wait for all cards in batch to complete
+      await Promise.all(batchPromises);
+      
+      processedCount += batch.length;
+      broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total: validCards.length } });
     }
 
     isRunning = false;
-    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: `Job finished. ${processedCount}/${total} processed.`, type: 'info' } });
+    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total: validCards.length } });
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: `Finished! ${processedCount}/${validCards.length} processed.`, type: 'info' } });
   };
 
   // === API Routes ===
