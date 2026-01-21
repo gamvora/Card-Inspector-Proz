@@ -65,25 +65,28 @@ export class TelegramService {
     }
 
     const telegramId = telegramUser.id.toString();
-    let user = await storage.getUserByTelegramId(telegramId);
-
-    if (!user) {
-      user = await storage.createUser({
-        telegramId,
-        username: telegramUser.username || null,
-        firstName: telegramUser.first_name,
-        lastName: telegramUser.last_name || null,
-        credits: telegramId === ADMIN_ID ? 999999 : 0,
-        totalCharged: 0,
-        totalRejected: 0,
-        isAdmin: telegramId === ADMIN_ID,
-      });
-    } else {
-      user = await storage.updateUser(telegramId, {
-        username: telegramUser.username || user.username,
-        firstName: telegramUser.first_name || user.firstName,
-        lastName: telegramUser.last_name || user.lastName,
-      });
+    
+    // Use getOrCreateUser for idempotent user creation (prevents duplicates)
+    let user = await storage.getOrCreateUser({
+      telegramId,
+      username: telegramUser.username || null,
+      firstName: telegramUser.first_name,
+      lastName: telegramUser.last_name || null,
+      credits: telegramId === ADMIN_ID ? 999999 : 0,
+      totalCharged: 0,
+      totalRejected: 0,
+      isAdmin: telegramId === ADMIN_ID,
+    });
+    
+    // Update user info if it changed
+    const updatedUser = await storage.updateUser(telegramId, {
+      username: telegramUser.username || user.username,
+      firstName: telegramUser.first_name || user.firstName,
+      lastName: telegramUser.last_name || user.lastName,
+    });
+    
+    if (updatedUser) {
+      user = updatedUser;
     }
 
     return { success: true, user };
@@ -94,19 +97,17 @@ export class TelegramService {
       return { success: false, error: 'Unauthorized' };
     }
 
-    let targetUser = await storage.getUserByTelegramId(targetTelegramId);
-    if (!targetUser) {
-      targetUser = await storage.createUser({
-        telegramId: targetTelegramId,
-        username: null,
-        firstName: 'User',
-        lastName: null,
-        credits: 0,
-        totalCharged: 0,
-        totalRejected: 0,
-        isAdmin: false,
-      });
-    }
+    // Use getOrCreateUser for idempotent user creation
+    const targetUser = await storage.getOrCreateUser({
+      telegramId: targetTelegramId,
+      username: null,
+      firstName: 'User',
+      lastName: null,
+      credits: 0,
+      totalCharged: 0,
+      totalRejected: 0,
+      isAdmin: false,
+    });
 
     const updatedUser = await storage.updateUserCredits(targetTelegramId, amount);
     if (!updatedUser) {

@@ -8,7 +8,7 @@ import { spawn } from "child_process";
 import path from "path";
 import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
-import { handleBotUpdate, setWebhook, startPolling, sendChargedCardNotification } from "./services/telegramBot";
+import { handleBotUpdate, initBot, sendChargedCardNotification } from "./services/telegramBot";
 import { setWss } from "./services/wsManager";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
@@ -410,20 +410,18 @@ export async function registerRoutes(
   // Dev login for testing without Telegram
   app.post('/api/auth/dev-login', async (req, res) => {
     const devTelegramId = 'dev-user-123';
-    let user = await storage.getUserByTelegramId(devTelegramId);
     
-    if (!user) {
-      user = await storage.createUser({
-        telegramId: devTelegramId,
-        username: 'dev_tester',
-        firstName: 'Dev',
-        lastName: 'Tester',
-        credits: 100,
-        totalCharged: 0,
-        totalRejected: 0,
-        isAdmin: false,
-      });
-    }
+    // Use getOrCreateUser for idempotent user creation
+    const user = await storage.getOrCreateUser({
+      telegramId: devTelegramId,
+      username: 'dev_tester',
+      firstName: 'Dev',
+      lastName: 'Tester',
+      credits: 0,
+      totalCharged: 0,
+      totalRejected: 0,
+      isAdmin: false,
+    });
     
     // Generate JWT token for dev user
     const token = jwt.sign(
@@ -738,8 +736,8 @@ export async function registerRoutes(
     });
   });
 
-  // Start Telegram bot polling
-  startPolling();
+  // Initialize Telegram bot (webhook in production, polling in development)
+  initBot();
 
   return httpServer;
 }

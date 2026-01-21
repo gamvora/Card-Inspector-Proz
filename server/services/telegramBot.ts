@@ -4,6 +4,7 @@ import { broadcastToTelegramId } from './wsManager';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || ADMIN_TELEGRAM_ID;
+const WEBAPP_URL = 'https://chkzz.replit.app';
 
 interface TelegramUpdate {
   update_id: number;
@@ -25,19 +26,42 @@ interface TelegramUpdate {
   };
 }
 
-let pollingActive = false;
-let lastUpdateId = 0;
+const processedUpdates = new Set<number>();
+const MAX_PROCESSED_UPDATES = 1000;
+let botInitialized = false;
+let webhookSet = false;
+
+function cleanupProcessedUpdates() {
+  if (processedUpdates.size > MAX_PROCESSED_UPDATES) {
+    const toRemove = processedUpdates.size - MAX_PROCESSED_UPDATES / 2;
+    const iterator = processedUpdates.values();
+    for (let i = 0; i < toRemove; i++) {
+      const val = iterator.next().value;
+      if (val !== undefined) {
+        processedUpdates.delete(val);
+      }
+    }
+  }
+}
 
 export async function handleBotUpdate(update: TelegramUpdate): Promise<void> {
+  if (processedUpdates.has(update.update_id)) {
+    console.log(`[BOT] Skipping duplicate update: ${update.update_id}`);
+    return;
+  }
+  
+  processedUpdates.add(update.update_id);
+  cleanupProcessedUpdates();
+
   if (!update.message?.text) return;
 
   const { text, from, chat } = update.message;
   const senderId = from.id.toString();
   const isAdmin = senderId === ADMIN_ID;
 
+  console.log(`[BOT] Processing update ${update.update_id}: ${text.substring(0, 20)}... from ${senderId}`);
+
   if (text.startsWith('/start')) {
-    const webAppUrl = getWebAppUrl();
-    
     await sendMessageWithButton(chat.id, `
 <b>Welcome to NexusChecker</b>
 
@@ -58,7 +82,7 @@ ${isAdmin ? `
 /credit [id] [amount] - Add/remove credits
 /user [id] - View user details
 /broadcast [msg] - Send to all users` : ''}
-`, 'Open NexusChecker', webAppUrl);
+`, 'Open NexusChecker', WEBAPP_URL);
     return;
   }
 
@@ -87,19 +111,17 @@ The user will be notified of the credit change.
       return;
     }
 
-    let targetUser = await storage.getUserByTelegramId(targetUserId);
-    if (!targetUser) {
-      targetUser = await storage.createUser({
-        telegramId: targetUserId,
-        username: null,
-        firstName: 'User',
-        lastName: null,
-        credits: 0,
-        totalCharged: 0,
-        totalRejected: 0,
-        isAdmin: false,
-      });
-    }
+    // Use getOrCreateUser for idempotent user creation
+    const targetUser = await storage.getOrCreateUser({
+      telegramId: targetUserId,
+      username: null,
+      firstName: 'User',
+      lastName: null,
+      credits: 0,
+      totalCharged: 0,
+      totalRejected: 0,
+      isAdmin: false,
+    });
 
     const updatedUser = await storage.updateUserCredits(targetUserId, amount);
     if (updatedUser) {
@@ -198,26 +220,20 @@ Approved: ${user.totalCharged}
 Declined: ${user.totalRejected}
       `);
     } else {
-      const webAppUrl = getWebAppUrl();
       await sendMessageWithButton(chat.id, 
         'No account found. Open the app to create one.',
         'Open NexusChecker',
-        webAppUrl
+        WEBAPP_URL
       );
     }
     return;
   }
 
-  const webAppUrl = getWebAppUrl();
   await sendMessageWithButton(chat.id, 
     'Unknown command. Use /start for help.',
     'Open NexusChecker',
-    webAppUrl
+    WEBAPP_URL
   );
-}
-
-function getWebAppUrl(): string {
-  return 'https://Chkzz.replit.app';
 }
 
 export async function sendChargedCardNotification(
@@ -307,33 +323,73 @@ async function sendMessageWithButton(chatId: number | string, text: string, butt
 }
 
 export async function setWebhook(webhookUrl: string): Promise<boolean> {
+  if (webhookSet) {
+    console.log('[BOT] Webhook already set, skipping');
+    return true;
+  }
+  
   try {
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl }),
+      body: JSON.stringify({ 
+        url: webhookUrl,
+        drop_pending_updates: true,
+        allowed_updates: ['message']
+      }),
     });
     const result = await response.json();
-    console.log('Webhook set result:', result);
+    console.log('[BOT] Webhook set result:', result);
+    webhookSet = response.ok;
     return response.ok;
   } catch (error) {
-    console.error('Error setting webhook:', error);
+    console.error('[BOT] Error setting webhook:', error);
     return false;
   }
 }
 
-async function deleteWebhook(): Promise<boolean> {
+export async function deleteWebhook(): Promise<boolean> {
   try {
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drop_pending_updates: true }),
     });
+    webhookSet = false;
     return response.ok;
   } catch (error) {
-    console.error('Error deleting webhook:', error);
+    console.error('[BOT] Error deleting webhook:', error);
     return false;
   }
 }
+
+export async function initBot(): Promise<void> {
+  if (!BOT_TOKEN) {
+    console.log('[BOT] No token configured, skipping bot initialization');
+    return;
+  }
+
+  if (botInitialized) {
+    console.log('[BOT] Already initialized, skipping');
+    return;
+  }
+
+  botInitialized = true;
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.REPL_SLUG;
+
+  if (isProduction) {
+    console.log('[BOT] Production mode - using webhook only');
+    const webhookUrl = `${WEBAPP_URL}/api/telegram/webhook`;
+    await setWebhook(webhookUrl);
+  } else {
+    console.log('[BOT] Development mode - using polling');
+    await deleteWebhook();
+    startPolling();
+  }
+}
+
+let pollingActive = false;
+let lastUpdateId = 0;
 
 async function getUpdates(): Promise<TelegramUpdate[]> {
   try {
@@ -347,26 +403,18 @@ async function getUpdates(): Promise<TelegramUpdate[]> {
     }
     return [];
   } catch (error) {
-    console.error('Error getting updates:', error);
+    console.error('[BOT] Error getting updates:', error);
     return [];
   }
 }
 
-export async function startPolling(): Promise<void> {
-  if (!BOT_TOKEN) {
-    console.log('Telegram bot token not configured, skipping bot startup');
-    return;
-  }
-
+function startPolling(): void {
   if (pollingActive) {
-    console.log('Polling already active');
+    console.log('[BOT] Polling already active');
     return;
   }
 
-  console.log('Starting Telegram bot with polling...');
-  
-  await deleteWebhook();
-  
+  console.log('[BOT] Starting polling...');
   pollingActive = true;
   
   const poll = async () => {
@@ -378,21 +426,21 @@ export async function startPolling(): Promise<void> {
           try {
             await handleBotUpdate(update);
           } catch (e) {
-            console.error('Error handling update:', e);
+            console.error('[BOT] Error handling update:', e);
           }
         }
       } catch (e) {
-        console.error('Polling error:', e);
+        console.error('[BOT] Polling error:', e);
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
   };
 
   poll().catch(console.error);
-  console.log('Telegram bot polling started successfully!');
+  console.log('[BOT] Polling started');
 }
 
 export function stopPolling(): void {
   pollingActive = false;
-  console.log('Telegram bot polling stopped');
+  console.log('[BOT] Polling stopped');
 }

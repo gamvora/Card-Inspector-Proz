@@ -21,12 +21,13 @@ import {
   type CreditTransaction,
   ADMIN_TELEGRAM_ID,
 } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Users
   getUserByTelegramId(telegramId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getOrCreateUser(user: InsertUser): Promise<User>;
   updateUser(telegramId: string, data: Partial<InsertUser>): Promise<User | undefined>;
   updateUserCredits(telegramId: string, amount: number): Promise<User | undefined>;
   updateUserStats(telegramId: string, charged: number, rejected: number): Promise<void>;
@@ -78,9 +79,42 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db.insert(users).values({
       ...user,
       isAdmin,
-      credits: isAdmin ? 999999 : 0,
+      credits: isAdmin ? 999999 : (user.credits || 0),
     }).returning();
     return created;
+  }
+
+  async getOrCreateUser(user: InsertUser): Promise<User> {
+    const existing = await this.getUserByTelegramId(user.telegramId);
+    if (existing) {
+      return existing;
+    }
+    
+    try {
+      const isAdmin = user.telegramId === ADMIN_TELEGRAM_ID;
+      const [created] = await db.insert(users).values({
+        ...user,
+        isAdmin,
+        credits: isAdmin ? 999999 : (user.credits || 0),
+      }).onConflictDoNothing({ target: users.telegramId }).returning();
+      
+      if (created) {
+        return created;
+      }
+      
+      const retryFetch = await this.getUserByTelegramId(user.telegramId);
+      if (retryFetch) {
+        return retryFetch;
+      }
+      
+      throw new Error('Failed to create or find user');
+    } catch (error) {
+      const retryFetch = await this.getUserByTelegramId(user.telegramId);
+      if (retryFetch) {
+        return retryFetch;
+      }
+      throw error;
+    }
   }
 
   async updateUser(telegramId: string, data: Partial<InsertUser>): Promise<User | undefined> {
