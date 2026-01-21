@@ -8,7 +8,7 @@ import { spawn } from "child_process";
 import path from "path";
 import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
-import { handleBotUpdate, setWebhook, startPolling } from "./services/telegramBot";
+import { handleBotUpdate, setWebhook, startPolling, sendChargedCardNotification } from "./services/telegramBot";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
 
@@ -190,7 +190,7 @@ export async function registerRoutes(
 
   const BATCH_SIZE = 10;
 
-  const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string, userId: number, sessionId: string) => {
+  const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string, userId: number, telegramId: string, sessionId: string, siteId?: number) => {
     const job = getUserJob(userId);
     job.isRunning = true;
     job.shouldStop = false;
@@ -263,12 +263,31 @@ export async function registerRoutes(
           broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
 
           // Deduct 1 credit immediately for this card (every check costs 1 credit)
-          const currentUser = await storage.getUserByTelegramId(userId.toString());
+          const currentUser = await storage.getUserByTelegramId(telegramId);
           if (currentUser && !currentUser.isAdmin) {
-            const updatedUser = await storage.updateUserCredits(currentUser.telegramId, -1);
+            const updatedUser = await storage.updateUserCredits(telegramId, -1);
             if (updatedUser) {
               broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: updatedUser.credits } });
             }
+          }
+
+          // Send charged card to Telegram bot
+          if (isCharged && siteId) {
+            const site = await storage.getSiteById(siteId);
+            const siteName = site?.name || targetUrl;
+            sendChargedCardNotification(
+              telegramId,
+              cardStr,
+              siteName,
+              result.message || 'Charged'
+            ).catch(console.error);
+          } else if (isCharged) {
+            sendChargedCardNotification(
+              telegramId,
+              cardStr,
+              targetUrl,
+              result.message || 'Charged'
+            ).catch(console.error);
           }
 
           return { success: true, stopped: false, charged: isCharged };
@@ -303,10 +322,7 @@ export async function registerRoutes(
     }
 
     // Update user stats
-    const user = await storage.getUserByTelegramId(userId.toString());
-    if (user) {
-      await storage.updateUserStats(user.telegramId, chargedCount, rejectedCount);
-    }
+    await storage.updateUserStats(telegramId, chargedCount, rejectedCount);
 
     job.isRunning = false;
     job.sessionId = null;
@@ -372,7 +388,7 @@ export async function registerRoutes(
       const { initData } = req.body;
       const result = await telegramService.authenticateUser(initData);
       
-      if (!result.success) {
+      if (!result.success || !result.user) {
         return res.status(401).json({ error: result.error });
       }
       
@@ -668,8 +684,12 @@ export async function registerRoutes(
 
     const sessionId = `${user.id}-${Date.now()}`;
 
+    // Determine siteId for notifications
+    const activeSite = await storage.getActiveSite(user.id);
+    const effectiveSiteId = siteId || activeSite?.id;
+
     // Start background process
-    processQueue(cards, targetUrl, proxyList, user.id, sessionId);
+    processQueue(cards, targetUrl, proxyList, user.id, user.telegramId, sessionId, effectiveSiteId);
     
     res.json({ message: 'Job started', jobId: sessionId });
   });

