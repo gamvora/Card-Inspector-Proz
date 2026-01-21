@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   username: varchar("username", { length: 100 }),
   firstName: varchar("first_name", { length: 100 }),
   lastName: varchar("last_name", { length: 100 }),
+  photoUrl: text("photo_url"),
   credits: integer("credits").default(0).notNull(),
   totalCharged: integer("total_charged").default(0).notNull(),
   totalRejected: integer("total_rejected").default(0).notNull(),

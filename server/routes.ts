@@ -215,7 +215,7 @@ export async function registerRoutes(
     });
   };
 
-  const BATCH_SIZE = 10;
+  const getBatchSize = (totalCards: number) => Math.max(1, Math.ceil(totalCards / 2));
 
   const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string, userId: number, telegramId: string, sessionId: string, siteId?: number) => {
     const job = getUserJob(userId);
@@ -232,13 +232,15 @@ export async function registerRoutes(
     let chargedCount = 0;
     let rejectedCount = 0;
 
-    broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: total } });
-    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
-    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${total} cards | ${proxies.length} proxies | Batch: ${BATCH_SIZE}`, type: 'info' } });
-
     const validCards = cards
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
+
+    const BATCH_SIZE = getBatchSize(validCards.length);
+
+    broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: total } });
+    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
+    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${validCards.length} cards | ${proxies.length} proxies | Parallel: ${BATCH_SIZE}`, type: 'info' } });
 
     for (let i = 0; i < validCards.length; i += BATCH_SIZE) {
       if (job.shouldStop) {

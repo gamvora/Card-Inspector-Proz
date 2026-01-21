@@ -60,9 +60,18 @@ export default function Loading({ onComplete }: LoadingProps) {
               transition={{ duration: 2, repeat: Infinity }}
               className="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center"
             >
-              <span className="text-4xl font-bold text-white">
-                {user?.firstName?.charAt(0) || 'N'}
-              </span>
+              {user?.photoUrl ? (
+                <img 
+                  src={user.photoUrl} 
+                  alt={user.firstName || 'User'} 
+                  className="w-full h-full object-cover"
+                  data-testid="img-user-avatar"
+                />
+              ) : (
+                <span className="text-4xl font-bold text-white">
+                  {user?.firstName?.charAt(0) || 'N'}
+                </span>
+              )}
             </motion.div>
           </div>
           

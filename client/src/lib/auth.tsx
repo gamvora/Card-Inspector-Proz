@@ -7,6 +7,7 @@ interface User {
   username: string | null;
   firstName: string | null;
   lastName: string | null;
+  photoUrl: string | null;
   credits: number;
   totalCharged: number;
   totalRejected: number;
@@ -36,6 +37,7 @@ declare global {
             first_name: string;
             last_name?: string;
             username?: string;
+            photo_url?: string;
           };
         };
         ready: () => void;

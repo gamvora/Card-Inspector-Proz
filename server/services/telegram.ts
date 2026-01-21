@@ -72,6 +72,7 @@ export class TelegramService {
       username: telegramUser.username || null,
       firstName: telegramUser.first_name,
       lastName: telegramUser.last_name || null,
+      photoUrl: telegramUser.photo_url || null,
       credits: telegramId === ADMIN_ID ? 999999 : 0,
       totalCharged: 0,
       totalRejected: 0,
@@ -83,6 +84,7 @@ export class TelegramService {
       username: telegramUser.username || user.username,
       firstName: telegramUser.first_name || user.firstName,
       lastName: telegramUser.last_name || user.lastName,
+      photoUrl: telegramUser.photo_url || user.photoUrl,
     });
     
     if (updatedUser) {
