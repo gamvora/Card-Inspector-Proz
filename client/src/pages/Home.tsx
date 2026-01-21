@@ -41,28 +41,6 @@ interface CheckResult {
   message?: string | null;
 }
 
-const playSuccessSound = () => {
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1);
-    oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2);
-    
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.4);
-  } catch (e) {
-    console.log('Audio not supported');
-  }
-};
 
 export default function Home() {
   const { user, refreshUser } = useAuth();
@@ -119,8 +97,6 @@ export default function Home() {
       const newLiveCards = liveResults.slice(prevLiveResults.length);
       
       newLiveCards.forEach((card) => {
-        playSuccessSound();
-        
         toast({
           title: "CHARGED!",
           description: (
@@ -130,6 +106,7 @@ export default function Home() {
             </div>
           ),
           className: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800",
+          soundType: 'success',
         });
       });
     }
@@ -534,6 +511,7 @@ export default function Home() {
             <motion.button 
               whileTap={{ scale: 0.95 }}
               className="flex flex-col items-center gap-1.5 py-1 px-8"
+              data-testid="nav-home"
             >
               <div className="p-2 rounded-xl bg-rose-500/10">
                 <HomeIcon className="w-5 h-5 text-rose-500" />
@@ -541,19 +519,23 @@ export default function Home() {
               <span className="text-[10px] font-semibold text-rose-500">Home</span>
             </motion.button>
           </Link>
-          <motion.button 
-            whileTap={{ scale: 0.95 }}
-            className="flex flex-col items-center gap-1.5 py-1 px-8"
-          >
-            <div className="p-2">
-              <User className="w-5 h-5 text-slate-400" />
-            </div>
-            <span className="text-[10px] font-medium text-slate-400">Profile</span>
-          </motion.button>
+          <Link href="/profile">
+            <motion.button 
+              whileTap={{ scale: 0.95 }}
+              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              data-testid="nav-profile"
+            >
+              <div className="p-2">
+                <User className="w-5 h-5 text-slate-400" />
+              </div>
+              <span className="text-[10px] font-medium text-slate-400">Profile</span>
+            </motion.button>
+          </Link>
           <Link href="/settings">
             <motion.button 
               whileTap={{ scale: 0.95 }}
               className="flex flex-col items-center gap-1.5 py-1 px-8"
+              data-testid="nav-settings"
             >
               <div className="p-2">
                 <Settings className="w-5 h-5 text-slate-400" />

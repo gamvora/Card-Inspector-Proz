@@ -5,8 +5,45 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 3
+const TOAST_REMOVE_DELAY = 6000
+
+const playNotificationSound = (type: 'success' | 'error' | 'default' = 'default') => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    if (type === 'success') {
+      oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.08);
+      oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.16);
+      gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.35);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.35);
+    } else if (type === 'error') {
+      oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(180, audioContext.currentTime + 0.15);
+      gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } else {
+      oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime + 0.1);
+      gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.25);
+    }
+  } catch (e) {
+    console.log('Audio not available');
+  }
+};
 
 type ToasterToast = ToastProps & {
   id: string
@@ -137,9 +174,15 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id"> & { 
+  sound?: boolean; 
+  soundType?: 'success' | 'error' | 'default';
+  duration?: number;
+}
 
-function toast({ ...props }: Toast) {
+const activeToastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+function toast({ sound = true, soundType, duration = 6000, ...props }: Toast) {
   const id = genId()
 
   const update = (props: ToasterToast) =>
@@ -147,7 +190,23 @@ function toast({ ...props }: Toast) {
       type: "UPDATE_TOAST",
       toast: { ...props, id },
     })
-  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+  
+  const dismiss = () => {
+    const existingTimeout = activeToastTimeouts.get(id);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      activeToastTimeouts.delete(id);
+    }
+    dispatch({ type: "DISMISS_TOAST", toastId: id });
+  }
+
+  if (sound) {
+    const type = soundType || (props.variant === 'destructive' ? 'error' : 'default');
+    try {
+      playNotificationSound(type);
+    } catch (e) {
+    }
+  }
 
   dispatch({
     type: "ADD_TOAST",
@@ -160,6 +219,13 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  const timeout = setTimeout(() => {
+    activeToastTimeouts.delete(id);
+    dismiss();
+  }, duration);
+  
+  activeToastTimeouts.set(id, timeout);
 
   return {
     id: id,

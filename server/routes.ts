@@ -547,6 +547,59 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/proxies/test', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { proxy } = req.body;
+      if (!proxy) {
+        return res.status(400).json({ error: 'Proxy required' });
+      }
+
+      const parts = proxy.split(':');
+      if (parts.length < 2) {
+        return res.status(400).json({ error: 'Invalid proxy format', valid: false });
+      }
+
+      const host = parts[0];
+      const port = parseInt(parts[1]);
+      const username = parts[2] || null;
+      const password = parts[3] || null;
+
+      if (isNaN(port) || port < 1 || port > 65535) {
+        return res.json({
+          valid: false,
+          proxy,
+          type: 'Unknown',
+          hasAuth: !!(username && password),
+          status: 'invalid',
+          error: 'Invalid port number'
+        });
+      }
+
+      const isRotating = host.includes('rotating') || host.includes('rotate') || 
+                        host.includes('residential') || host.includes('mobile') ||
+                        host.includes('backconnect');
+      
+      let proxyType = 'Static';
+      if (isRotating) {
+        proxyType = 'Rotating';
+      } else if (host.includes('datacenter') || host.includes('dc')) {
+        proxyType = 'Datacenter';
+      } else if (host.includes('residential') || host.includes('resi')) {
+        proxyType = 'Residential';
+      }
+
+      res.json({
+        valid: true,
+        proxy,
+        type: proxyType,
+        hasAuth: !!(username && password),
+        status: 'format_valid'
+      });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message, valid: false });
+    }
+  });
+
   app.delete('/api/proxies/:id', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id as string);

@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { authFetch } from '@/lib/auth';
@@ -18,17 +19,17 @@ import {
   Server,
   Save,
   X,
-  ArrowLeft,
   Radio,
-  BarChart3,
-  TrendingUp,
-  TrendingDown,
-  Coins,
   Home as HomeIcon,
   User,
   Settings as SettingsIcon,
-  Sparkles,
   Zap,
+  Shield,
+  Wifi,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Activity,
 } from 'lucide-react';
 import { Link } from 'wouter';
 
@@ -45,13 +46,24 @@ interface Proxy {
   isValid: boolean;
 }
 
+interface ProxyTestResult {
+  valid: boolean;
+  proxy: string;
+  responseTime?: number;
+  type?: string;
+  hasAuth?: boolean;
+  status?: string;
+  error?: string;
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteUrl, setNewSiteUrl] = useState('');
   const [newProxies, setNewProxies] = useState('');
-  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [testingProxy, setTestingProxy] = useState<string | null>(null);
+  const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
 
   const { data: sites = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -69,15 +81,6 @@ export default function Settings() {
     },
   });
 
-  const { data: userStats } = useQuery({
-    queryKey: ['/api/stats'],
-    queryFn: async () => {
-      const res = await authFetch('/api/stats');
-      if (!res.ok) return null;
-      return res.json();
-    },
-  });
-
   const addSiteMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
       const res = await authFetch('/api/sites', {
@@ -90,7 +93,10 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['/api/sites'] });
       setNewSiteName('');
       setNewSiteUrl('');
-      toast({ title: 'Site added successfully!' });
+      toast({ title: 'Site added!', soundType: 'success' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to add site', variant: 'destructive' });
     },
   });
 
@@ -100,7 +106,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/sites'] });
-      toast({ title: 'Site removed' });
+      toast({ title: 'Site removed', sound: false });
     },
   });
 
@@ -110,7 +116,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/sites'] });
-      toast({ title: 'Site activated!' });
+      toast({ title: 'Site activated!', soundType: 'success' });
     },
   });
 
@@ -125,7 +131,8 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/proxies'] });
       setNewProxies('');
-      toast({ title: 'Proxies saved!' });
+      setProxyTestResult(null);
+      toast({ title: 'Proxies saved!', soundType: 'success' });
     },
   });
 
@@ -135,7 +142,39 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/proxies'] });
-      toast({ title: 'All proxies cleared' });
+      toast({ title: 'All proxies cleared', sound: false });
+    },
+  });
+
+  const testProxyMutation = useMutation({
+    mutationFn: async (proxy: string) => {
+      setTestingProxy(proxy);
+      const res = await authFetch('/api/proxies/test', {
+        method: 'POST',
+        body: JSON.stringify({ proxy }),
+      });
+      return res.json();
+    },
+    onSuccess: (data: ProxyTestResult) => {
+      setProxyTestResult(data);
+      setTestingProxy(null);
+      if (data.valid) {
+        toast({ 
+          title: 'Format Valid!', 
+          description: `Type: ${data.type || 'Static'}`,
+          soundType: 'success' 
+        });
+      } else {
+        toast({ 
+          title: 'Invalid Format', 
+          description: data.error || 'Check proxy format',
+          variant: 'destructive' 
+        });
+      }
+    },
+    onError: () => {
+      setTestingProxy(null);
+      toast({ title: 'Test failed', variant: 'destructive' });
     },
   });
 
@@ -147,240 +186,159 @@ export default function Settings() {
     addSiteMutation.mutate({ name: newSiteName, url: newSiteUrl });
   };
 
-  const handleAddProxies = () => {
+  const handleTestAndSaveProxies = async () => {
     const proxyList = newProxies.split('\n').map(p => p.trim()).filter(p => p);
     if (proxyList.length === 0) {
-      toast({ title: 'Please enter at least one proxy', variant: 'destructive' });
+      toast({ title: 'Enter at least one proxy', variant: 'destructive' });
       return;
     }
+
+    if (proxyList.length === 1) {
+      await testProxyMutation.mutateAsync(proxyList[0]);
+    }
+
     addProxiesMutation.mutate(proxyList);
   };
 
-  const totalChecked = (userStats?.totalCharged || 0) + (userStats?.totalRejected || 0);
-  const successRate = totalChecked > 0 ? ((userStats?.totalCharged || 0) / totalChecked * 100).toFixed(1) : '0.0';
+  const handleTestFirstProxy = () => {
+    const proxyList = newProxies.split('\n').map(p => p.trim()).filter(p => p);
+    if (proxyList.length > 0) {
+      testProxyMutation.mutate(proxyList[0]);
+    }
+  };
+
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950/30 pb-24">
       
       <motion.header 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="px-4 pt-4 pb-2"
+        className="px-4 pt-6 pb-4"
       >
-        <div className="flex items-center justify-between mb-4">
-          <Link href="/">
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-back">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-            </motion.div>
-          </Link>
-          
-          <div className="flex items-center gap-2">
-            <motion.div
-              animate={{ rotate: [0, 10, -10, 0] }}
-              transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-            >
-              <Sparkles className="w-5 h-5 text-purple-400" />
-            </motion.div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Settings</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <SettingsIcon className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white">Settings</h1>
+              <p className="text-xs text-slate-400">Manage your configuration</p>
+            </div>
           </div>
-          
-          <Dialog open={showAnalytics} onOpenChange={setShowAnalytics}>
-            <DialogTrigger asChild>
-              <motion.div whileTap={{ scale: 0.95 }}>
-                <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-analytics">
-                  <BarChart3 className="w-5 h-5" />
-                </Button>
-              </motion.div>
-            </DialogTrigger>
-            <DialogContent className="max-w-xs mx-auto rounded-3xl border-0 shadow-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-center justify-center">
-                  <Zap className="w-5 h-5 text-amber-500" />
-                  Your Statistics
-                </DialogTitle>
-                <DialogDescription className="text-center text-xs">
-                  Track your checking performance
-                </DialogDescription>
-              </DialogHeader>
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4 pt-2"
-              >
-                <div className="grid grid-cols-2 gap-3">
-                  <motion.div 
-                    whileHover={{ scale: 1.02 }}
-                    className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-500/20 dark:to-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl p-4 text-center"
-                  >
-                    <div className="w-10 h-10 mx-auto mb-2 bg-emerald-500/20 rounded-xl flex items-center justify-center">
-                      <TrendingUp className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="stat-total-charged">
-                      {userStats?.totalCharged || 0}
-                    </p>
-                    <p className="text-xs font-medium text-emerald-600/70">Approved</p>
-                  </motion.div>
-                  <motion.div 
-                    whileHover={{ scale: 1.02 }}
-                    className="bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-500/20 dark:to-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-2xl p-4 text-center"
-                  >
-                    <div className="w-10 h-10 mx-auto mb-2 bg-rose-500/20 rounded-xl flex items-center justify-center">
-                      <TrendingDown className="w-5 h-5 text-rose-600" />
-                    </div>
-                    <p className="text-2xl font-bold text-rose-600 dark:text-rose-400" data-testid="stat-total-declined">
-                      {userStats?.totalRejected || 0}
-                    </p>
-                    <p className="text-xs font-medium text-rose-600/70">Declined</p>
-                  </motion.div>
-                </div>
-                
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-800/50 rounded-2xl p-4 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-500 font-medium">Total Checked</span>
-                    <span className="font-mono font-bold text-lg">{totalChecked}</span>
-                  </div>
-                  <div className="h-px bg-slate-200 dark:bg-slate-700" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-500 font-medium">Success Rate</span>
-                    <span className="font-mono font-bold text-lg text-emerald-600">{successRate}%</span>
-                  </div>
-                  <div className="h-px bg-slate-200 dark:bg-slate-700" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-500 font-medium">Credits</span>
-                    <div className="flex items-center gap-1">
-                      <Coins className="w-4 h-4 text-amber-500" />
-                      <span className="font-mono font-bold text-lg text-amber-600">{user?.credits || 0}</span>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {user && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-400 via-pink-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-pink-500/20">
-                        {(user.firstName?.[0] || user.username?.[0] || 'U').toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold truncate">{user.firstName} {user.lastName}</p>
-                        <p className="text-xs text-slate-400">@{user.username || user.telegramId}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            </DialogContent>
-          </Dialog>
+          {user?.isAdmin && (
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 dark:bg-amber-500/20 rounded-full"
+            >
+              <Shield className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-xs font-bold text-amber-600">Admin</span>
+            </motion.div>
+          )}
         </div>
       </motion.header>
 
-      <main className="px-4 space-y-4">
+      <main className="px-4 space-y-5">
         
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200/80 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none p-5"
         >
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center">
-              <Globe className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Target Sites</h2>
-              <p className="text-xs text-slate-400">Add Shopify stores to check</p>
-            </div>
-          </div>
-          
-          <div className="space-y-3 mb-5">
-            <Input
-              placeholder="Site name (e.g. Nike Store)"
-              value={newSiteName}
-              onChange={(e) => setNewSiteName(e.target.value)}
-              className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-medium"
-              data-testid="input-site-name"
-            />
-            <Input
-              placeholder="https://store.myshopify.com"
-              value={newSiteUrl}
-              onChange={(e) => setNewSiteUrl(e.target.value)}
-              className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
-              data-testid="input-site-url"
-            />
-            <Button 
-              onClick={handleAddSite}
-              disabled={addSiteMutation.isPending}
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-lg shadow-rose-500/20"
-              data-testid="button-add-site"
-            >
-              {addSiteMutation.isPending ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add Site
-                </>
-              )}
-            </Button>
-          </div>
-
-          {sitesLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-            </div>
-          ) : sites.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 mx-auto mb-3 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center">
-                <Globe className="w-8 h-8 text-slate-300" />
+          <Card className="p-5 rounded-3xl bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 shadow-xl shadow-slate-200/20 dark:shadow-none">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center shadow-lg shadow-rose-500/20">
+                <Globe className="w-5 h-5 text-white" />
               </div>
-              <p className="text-slate-400 text-sm">No sites added yet</p>
+              <div>
+                <h2 className="font-bold text-lg">Target Sites</h2>
+                <p className="text-xs text-slate-400">Add Shopify stores</p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-2">
-              <AnimatePresence>
-                {sites.map((site, index) => (
-                  <motion.div
-                    key={site.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                      site.isActive 
-                        ? 'border-emerald-300 dark:border-emerald-500/40 bg-gradient-to-r from-emerald-50 to-emerald-100/50 dark:from-emerald-500/10 dark:to-emerald-500/5' 
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
-                    }`}
-                    data-testid={`site-item-${site.id}`}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {site.isActive && (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center"
-                        >
-                          <Radio className="w-4 h-4 text-emerald-500" />
-                        </motion.div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm truncate">{site.name}</p>
-                        <p className="text-xs text-slate-400 truncate font-mono">{site.url}</p>
+            
+            <div className="space-y-3 mb-5">
+              <Input
+                placeholder="Site name (e.g. Nike Store)"
+                value={newSiteName}
+                onChange={(e) => setNewSiteName(e.target.value)}
+                className="rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-medium"
+                data-testid="input-site-name"
+              />
+              <Input
+                placeholder="https://store.myshopify.com"
+                value={newSiteUrl}
+                onChange={(e) => setNewSiteUrl(e.target.value)}
+                className="rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
+                data-testid="input-site-url"
+              />
+              <Button 
+                onClick={handleAddSite}
+                disabled={addSiteMutation.isPending}
+                className="w-full rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-lg shadow-rose-500/20 border-0"
+                size="lg"
+                data-testid="button-add-site"
+              >
+                {addSiteMutation.isPending ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5 mr-2" />
+                    Add Site
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <AnimatePresence>
+              {sitesLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                </div>
+              ) : sites.length === 0 ? (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-center py-8"
+                >
+                  <div className="w-16 h-16 mx-auto mb-3 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center">
+                    <Globe className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <p className="text-slate-400 text-sm">No sites added yet</p>
+                </motion.div>
+              ) : (
+                <div className="space-y-2">
+                  {sites.map((site, index) => (
+                    <motion.div
+                      key={site.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      transition={{ delay: index * 0.05 }}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                        site.isActive 
+                          ? 'border-emerald-300 dark:border-emerald-500/40 bg-gradient-to-r from-emerald-50 to-emerald-100/50 dark:from-emerald-500/10 dark:to-emerald-500/5' 
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+                      }`}
+                      data-testid={`site-item-${site.id}`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {site.isActive && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center"
+                          >
+                            <Radio className="w-4 h-4 text-emerald-500" />
+                          </motion.div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm truncate">{site.name}</p>
+                          <p className="text-xs text-slate-400 truncate font-mono">{site.url}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {!site.isActive && (
-                        <motion.div whileTap={{ scale: 0.9 }}>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {!site.isActive && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -391,9 +349,7 @@ export default function Settings() {
                           >
                             <CheckCircle className="w-5 h-5 text-emerald-500" />
                           </Button>
-                        </motion.div>
-                      )}
-                      <motion.div whileTap={{ scale: 0.9 }}>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -404,84 +360,180 @@ export default function Settings() {
                         >
                           <Trash2 className="w-5 h-5" />
                         </Button>
-                      </motion.div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </AnimatePresence>
+          </Card>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200/80 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none p-5"
         >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center">
-                <Server className="w-5 h-5 text-white" />
+          <Card className="p-5 rounded-3xl bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 shadow-xl shadow-slate-200/20 dark:shadow-none">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  <Server className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg">Proxy Settings</h2>
+                  <p className="text-xs text-slate-400">Test and manage proxies</p>
+                </div>
               </div>
-              <div>
-                <h2 className="font-bold text-lg">Proxy List</h2>
-                <p className="text-xs text-slate-400">Add proxies for rotation</p>
-              </div>
+              <motion.span 
+                key={proxies.length}
+                initial={{ scale: 1.2 }}
+                animate={{ scale: 1 }}
+                className="text-xs font-bold px-3 py-1.5 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-full"
+              >
+                {proxies.length} active
+              </motion.span>
             </div>
-            <motion.span 
-              key={proxies.length}
-              initial={{ scale: 1.2 }}
-              animate={{ scale: 1 }}
-              className="text-xs font-bold px-3 py-1 bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-full"
-            >
-              {proxies.length} active
-            </motion.span>
-          </div>
-          
-          <Textarea
-            placeholder="host:port:user:pass&#10;or host:port&#10;One proxy per line"
-            value={newProxies}
-            onChange={(e) => setNewProxies(e.target.value)}
-            rows={4}
-            className="font-mono text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 mb-4"
-            data-testid="input-proxies"
-          />
-          <div className="flex gap-3">
-            <Button 
-              onClick={handleAddProxies}
-              disabled={addProxiesMutation.isPending}
-              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold shadow-lg shadow-purple-500/20"
-              data-testid="button-add-proxies"
-            >
-              {addProxiesMutation.isPending ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <Save className="w-5 h-5 mr-2" />
-                  Save Proxies
-                </>
-              )}
-            </Button>
-            {proxies.length > 0 && (
-              <motion.div whileTap={{ scale: 0.95 }}>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => clearProxiesMutation.mutate()}
-                  disabled={clearProxiesMutation.isPending}
-                  className="h-12 w-12 rounded-xl border-2 border-rose-300 dark:border-rose-500/50 text-rose-500"
-                  data-testid="button-clear-proxies"
+            
+            <Textarea
+              placeholder="host:port:user:pass&#10;or host:port&#10;One proxy per line"
+              value={newProxies}
+              onChange={(e) => {
+                setNewProxies(e.target.value);
+                setProxyTestResult(null);
+              }}
+              rows={4}
+              className="font-mono text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 mb-4"
+              data-testid="input-proxies"
+            />
+
+            <AnimatePresence>
+              {proxyTestResult && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-4"
                 >
-                  {clearProxiesMutation.isPending ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <X className="w-5 h-5" />
-                  )}
-                </Button>
+                  <div className={`p-4 rounded-2xl border ${
+                    proxyTestResult.valid 
+                      ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30' 
+                      : 'bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/30'
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        {proxyTestResult.valid ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-rose-500" />
+                        )}
+                        <span className={`font-bold ${proxyTestResult.valid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {proxyTestResult.valid ? 'Proxy Active' : 'Proxy Failed'}
+                        </span>
+                      </div>
+                      {proxyTestResult.type && (
+                        <span className="text-xs font-medium px-2 py-1 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                          {proxyTestResult.type}
+                        </span>
+                      )}
+                    </div>
+
+                    {proxyTestResult.valid && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center gap-2">
+                          <Wifi className="w-4 h-4 text-emerald-500" />
+                          <span className="text-sm">
+                            <span className="font-bold text-emerald-600">Format Valid</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-indigo-500" />
+                          <span className="text-sm">
+                            <span className="font-medium text-indigo-600">{proxyTestResult.type}</span>
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {!proxyTestResult.valid && proxyTestResult.error && (
+                      <div className="flex items-center gap-2 text-rose-600">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm">{proxyTestResult.error}</span>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={handleTestFirstProxy}
+                disabled={testProxyMutation.isPending || !newProxies.trim()}
+                variant="outline"
+                size="lg"
+                className="rounded-xl border-2 border-indigo-200 dark:border-indigo-500/30 font-semibold"
+                data-testid="button-test-proxy"
+              >
+                {testProxyMutation.isPending ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 mr-2 text-indigo-500" />
+                    Test
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                onClick={handleTestAndSaveProxies}
+                disabled={addProxiesMutation.isPending || !newProxies.trim()}
+                size="lg"
+                className="flex-1 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow-lg shadow-indigo-500/20 border-0"
+                data-testid="button-add-proxies"
+              >
+                {addProxiesMutation.isPending ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="w-5 h-5 mr-2" />
+                    Save Proxies
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {proxies.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">
+                    {proxies.length} proxy{proxies.length !== 1 ? 's' : ''} configured
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => clearProxiesMutation.mutate()}
+                    disabled={clearProxiesMutation.isPending}
+                    className="text-rose-500 h-8 px-3 rounded-lg"
+                    data-testid="button-clear-proxies"
+                  >
+                    {clearProxiesMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Clear All
+                      </>
+                    )}
+                  </Button>
+                </div>
               </motion.div>
             )}
-          </div>
+          </Card>
         </motion.div>
 
       </main>
@@ -489,9 +541,10 @@ export default function Settings() {
       <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-700/50 px-4 py-3 z-50">
         <div className="flex items-center justify-around max-w-md mx-auto">
           <Link href="/">
-            <motion.button 
+            <motion.button
               whileTap={{ scale: 0.95 }}
               className="flex flex-col items-center gap-1.5 py-1 px-8"
+              data-testid="nav-home"
             >
               <div className="p-2">
                 <HomeIcon className="w-5 h-5 text-slate-400" />
@@ -499,19 +552,23 @@ export default function Settings() {
               <span className="text-[10px] font-medium text-slate-400">Home</span>
             </motion.button>
           </Link>
-          <motion.button 
-            whileTap={{ scale: 0.95 }}
-            className="flex flex-col items-center gap-1.5 py-1 px-8"
-          >
-            <div className="p-2">
-              <User className="w-5 h-5 text-slate-400" />
-            </div>
-            <span className="text-[10px] font-medium text-slate-400">Profile</span>
-          </motion.button>
-          <Link href="/settings">
-            <motion.button 
+          <Link href="/profile">
+            <motion.button
               whileTap={{ scale: 0.95 }}
               className="flex flex-col items-center gap-1.5 py-1 px-8"
+              data-testid="nav-profile"
+            >
+              <div className="p-2">
+                <User className="w-5 h-5 text-slate-400" />
+              </div>
+              <span className="text-[10px] font-medium text-slate-400">Profile</span>
+            </motion.button>
+          </Link>
+          <Link href="/settings">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              data-testid="nav-settings"
             >
               <div className="p-2 rounded-xl bg-purple-500/10">
                 <SettingsIcon className="w-5 h-5 text-purple-500" />
@@ -521,7 +578,6 @@ export default function Settings() {
           </Link>
         </div>
       </nav>
-
     </div>
   );
 }

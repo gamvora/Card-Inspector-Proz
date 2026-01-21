@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { useState, useEffect } from "react";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
 import Loading from "@/pages/Loading";
 import NotFound from "@/pages/not-found";
 
@@ -28,6 +29,7 @@ function AppContent() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/profile" component={Profile} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
