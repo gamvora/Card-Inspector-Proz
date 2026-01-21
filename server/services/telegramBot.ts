@@ -217,10 +217,7 @@ Declined: ${user.totalRejected}
 }
 
 function getWebAppUrl(): string {
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
-  return `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+  return 'https://Chkzz.replit.app';
 }
 
 export async function sendChargedCardNotification(
