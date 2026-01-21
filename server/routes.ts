@@ -8,7 +8,7 @@ import { spawn } from "child_process";
 import path from "path";
 import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
-import { handleBotUpdate, setWebhook } from "./services/telegramBot";
+import { handleBotUpdate, setWebhook, startPolling } from "./services/telegramBot";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
 
@@ -720,6 +720,9 @@ export async function registerRoutes(
       credits: user.credits,
     });
   });
+
+  // Start Telegram bot polling
+  startPolling();
 
   return httpServer;
 }
