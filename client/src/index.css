@@ -196,3 +196,52 @@
   z-index: 50;
   opacity: 0.3;
 }
+
+/* Neon Border Animation */
+@keyframes neonPulse {
+  0% {
+    background-position: 0% 50%;
+    filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.5));
+  }
+  50% {
+    background-position: 100% 50%;
+    filter: drop-shadow(0 0 15px rgba(236, 72, 153, 0.8));
+  }
+  100% {
+    background-position: 0% 50%;
+    filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.5));
+  }
+}
+
+.neon-border-active {
+  position: relative;
+}
+
+.neon-border-active::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 1rem;
+  padding: 2px;
+  background: linear-gradient(90deg, #a855f7, #ec4899, #6366f1, #a855f7);
+  background-size: 300% 100%;
+  animation: neonPulse 3s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Glow effect for active elements */
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(168, 85, 247, 0.3), 0 0 10px rgba(168, 85, 247, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.5), 0 0 25px rgba(168, 85, 247, 0.3);
+  }
+}
+
+.glow-pulse {
+  animation: glowPulse 2s ease-in-out infinite;
+}

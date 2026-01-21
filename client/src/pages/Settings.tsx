@@ -607,9 +607,60 @@ export default function Settings() {
           </Card>
         </motion.div>
 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+        >
+          <Card className="p-5 rounded-2xl border-border bg-card shadow-lg overflow-hidden">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Support & Help</h3>
+                <p className="text-xs text-muted-foreground">Need help? Contact us</p>
+              </div>
+            </div>
+            
+            <a 
+              href="https://t.me/lucee7" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 hover:from-blue-500/20 hover:to-cyan-500/20 transition-all group"
+              data-testid="link-contact-owner"
+            >
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-blue-600 dark:text-blue-400 group-hover:underline">@lucee7</p>
+                <p className="text-xs text-muted-foreground">Bot Owner - Click to chat</p>
+              </div>
+              <div className="text-blue-500">
+                <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </a>
+            
+            <div className="mt-4 p-3 rounded-xl bg-muted/50 border border-border">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Activity className="w-4 h-4 text-emerald-500" />
+                <span>App Version: 2.0.0</span>
+                <span className="ml-auto text-emerald-500 font-medium">Online</span>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-700/50 px-4 py-3 z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-xl border-t border-border px-4 py-3 z-50">
         <div className="flex items-center justify-around max-w-md mx-auto">
           <Link href="/">
             <motion.button
@@ -618,9 +669,9 @@ export default function Settings() {
               data-testid="nav-home"
             >
               <div className="p-2">
-                <HomeIcon className="w-5 h-5 text-slate-400" />
+                <HomeIcon className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-[10px] font-medium text-slate-400">Home</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Home</span>
             </motion.button>
           </Link>
           <Link href="/profile">
@@ -630,9 +681,9 @@ export default function Settings() {
               data-testid="nav-profile"
             >
               <div className="p-2">
-                <User className="w-5 h-5 text-slate-400" />
+                <User className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-[10px] font-medium text-slate-400">Profile</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Profile</span>
             </motion.button>
           </Link>
           <Link href="/settings">

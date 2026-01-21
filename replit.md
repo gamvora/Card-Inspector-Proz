@@ -41,7 +41,8 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 ### UI Improvements (January 2026)
 - Clean mobile-first design with bottom navigation (Home, Profile, Settings)
 - Header with credits balance, total approved/declined stats
-- Card input textarea with card count display
+- Card input textarea with card count display and file upload support (.txt files)
+- Neon border animation on card input when focused
 - Site selector with left/right navigation arrows
 - APPROVED/DECLINED tabs for filtering results
 - Result cards with status indicator and copy button
@@ -50,10 +51,13 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
   - Top Karders leaderboard with rankings
   - Statistics cards (Total Cards, Hit Rate, Live Cards, Global Avg)
   - Three chart types with tab navigation (Bar, Donut, Area)
+- Beautiful Loading page with user avatar, welcome message, and "Loading Magic" text
 - Toast notifications with sound effects (success/error/default), 6-second auto-dismiss
 - Modern Settings page with card-based layouts and Framer Motion animations
+- Support section with bot owner @lucee7 contact link
 - Multi-theme system: Light, Dark, System, Nighty (purple), Forest (green), Sunset (warm)
 - Theme selector dropdown in Settings header
+- Bot owner @lucee7 visible in header with Telegram link
 - Renamed "rejected" to "declined" throughout user-facing text
 
 ## User Preferences

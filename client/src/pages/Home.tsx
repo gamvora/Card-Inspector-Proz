@@ -21,6 +21,8 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  MessageCircle,
+  FileUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -48,12 +50,14 @@ export default function Home() {
   const stopCheck = useStopCheck();
   const { results, stats, clearLocalResults } = useCheckerSocket();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [cardsInput, setCardsInput] = useState("");
   const [selectedSiteIndex, setSelectedSiteIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"live" | "dead">("live");
   const [lastChargedCount, setLastChargedCount] = useState(0);
   const prevResultsRef = useRef<CheckResult[]>([]);
+  const [isFocused, setIsFocused] = useState(false);
 
   const { data: sites = [] } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -114,6 +118,36 @@ export default function Home() {
     prevResultsRef.current = results;
   }, [results, toast]);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.txt')) {
+      toast({
+        title: "Invalid File",
+        description: "Please upload a .txt file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setCardsInput(prev => prev ? prev + '\n' + content : content);
+      toast({
+        title: "File Loaded",
+        description: `${content.split('\n').filter(l => l.trim()).length} cards imported`,
+        soundType: 'default',
+      });
+    };
+    reader.readAsText(file);
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleStart = async () => {
     if (!cardsInput.trim()) {
       toast({
@@ -170,8 +204,19 @@ export default function Home() {
 
   const displayedResults = activeTab === "live" ? liveResults : deadResults;
 
+  const openOwnerChat = () => {
+    window.open('https://t.me/lucee7', '_blank');
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-rose-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col pb-20">
+    <div className="min-h-screen bg-background flex flex-col pb-20">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".txt"
+        className="hidden"
+      />
       
       <header className="px-4 pt-4 pb-2">
         <motion.div 
@@ -195,25 +240,37 @@ export default function Home() {
             </motion.span>
           </motion.div>
           
-          <div className="flex items-center gap-4 text-xs">
-            <motion.div 
-              whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-full"
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4 text-xs">
+              <motion.div 
+                whileHover={{ scale: 1.05 }}
+                className="flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-full"
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {userStats?.totalCharged || 0}
+                </span>
+              </motion.div>
+              <motion.div 
+                whileHover={{ scale: 1.05 }}
+                className="flex items-center gap-1.5 bg-rose-500/10 px-2.5 py-1 rounded-full"
+              >
+                <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
+                <span className="font-bold text-rose-600 dark:text-rose-400">
+                  {userStats?.totalRejected || 0}
+                </span>
+              </motion.div>
+            </div>
+            
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={openOwnerChat}
+              className="p-2 rounded-full bg-blue-500/10 border border-blue-500/20"
+              data-testid="button-contact-owner"
             >
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                {userStats?.totalCharged || 0}
-              </span>
-            </motion.div>
-            <motion.div 
-              whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-1.5 bg-rose-500/10 px-2.5 py-1 rounded-full"
-            >
-              <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
-              <span className="font-bold text-rose-600 dark:text-rose-400">
-                {userStats?.totalRejected || 0}
-              </span>
-            </motion.div>
+              <MessageCircle className="w-4 h-4 text-blue-500" />
+            </motion.button>
           </div>
         </motion.div>
 
@@ -227,18 +284,25 @@ export default function Home() {
               animate={{ rotate: [0, 15, -15, 0] }}
               transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
             >
-              <Sparkles className="w-5 h-5 text-rose-400" />
+              <Sparkles className="w-5 h-5 text-purple-400" />
             </motion.div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-rose-600 via-pink-500 to-purple-500 dark:from-rose-400 dark:via-pink-400 dark:to-purple-400 bg-clip-text text-transparent">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 dark:from-purple-400 dark:via-pink-400 dark:to-rose-400 bg-clip-text text-transparent">
               NexusChecker
             </h1>
             <motion.div
               animate={{ rotate: [0, -15, 15, 0] }}
               transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
             >
-              <Sparkles className="w-5 h-5 text-purple-400" />
+              <Sparkles className="w-5 h-5 text-rose-400" />
             </motion.div>
           </div>
+          <motion.button
+            onClick={openOwnerChat}
+            whileHover={{ scale: 1.05 }}
+            className="text-xs text-blue-500 mt-1 flex items-center gap-1 mx-auto"
+          >
+            <span>@lucee7</span>
+          </motion.button>
         </motion.div>
       </header>
 
@@ -248,33 +312,67 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-lg shadow-slate-200/50 dark:shadow-none overflow-hidden"
+          className={`relative rounded-2xl overflow-hidden ${
+            isFocused ? 'neon-border-active' : ''
+          }`}
+          style={{
+            background: isFocused 
+              ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(236, 72, 153, 0.1))'
+              : undefined
+          }}
         >
-          <Textarea 
-            value={cardsInput}
-            onChange={(e) => setCardsInput(e.target.value)}
-            placeholder="Paste your cards here...&#10;Format: 4111111111111111|12|2025|123"
-            className="border-0 min-h-[120px] resize-none bg-transparent focus-visible:ring-0 font-mono text-sm p-4 leading-relaxed placeholder:text-slate-400"
-            spellCheck={false}
-            data-testid="input-cards"
-          />
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 dark:border-slate-700/50 bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800/50 dark:to-slate-800/30">
-            <button className="p-2 rounded-lg hover-elevate">
-              <Upload className="w-4 h-4 text-slate-400" />
-            </button>
-            <motion.span 
-              key={cardsInput.split('\n').filter(l => l.trim().length > 0).length}
-              initial={{ scale: 1.1 }}
-              animate={{ scale: 1 }}
-              className="text-xs font-mono px-2 py-1 bg-slate-200/50 dark:bg-slate-700/50 rounded-md text-slate-500"
-            >
-              {cardsInput.split('\n').filter(l => l.trim().length > 0).length} cards
-            </motion.span>
-            <Link href="/settings">
-              <button className="p-2 rounded-lg hover-elevate">
-                <Settings className="w-4 h-4 text-slate-400" />
-              </button>
-            </Link>
+          <div className={`absolute inset-0 rounded-2xl transition-opacity duration-500 ${
+            isFocused ? 'opacity-100' : 'opacity-0'
+          }`} style={{
+            background: 'linear-gradient(90deg, #a855f7, #ec4899, #6366f1, #a855f7)',
+            backgroundSize: '300% 100%',
+            animation: isFocused ? 'neonPulse 3s linear infinite' : 'none',
+            padding: '2px',
+            WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+            WebkitMaskComposite: 'xor',
+            maskComposite: 'exclude',
+          }} />
+          
+          <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden relative">
+            <Textarea 
+              value={cardsInput}
+              onChange={(e) => setCardsInput(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="Paste your cards here...&#10;Format: 4111111111111111|12|2025|123"
+              className="border-0 min-h-[140px] resize-none bg-transparent focus-visible:ring-0 font-mono text-sm p-4 leading-relaxed placeholder:text-muted-foreground/50"
+              spellCheck={false}
+              data-testid="input-cards"
+            />
+            <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
+              <motion.button 
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-colors"
+                data-testid="button-upload-file"
+              >
+                <FileUp className="w-4 h-4 text-purple-500" />
+              </motion.button>
+              <motion.div 
+                key={cardsInput.split('\n').filter(l => l.trim().length > 0).length}
+                initial={{ scale: 1.1 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-muted rounded-lg text-muted-foreground"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>{cardsInput.split('\n').filter(l => l.trim().length > 0).length} cards</span>
+              </motion.div>
+              <Link href="/settings">
+                <motion.button 
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="p-2.5 rounded-xl hover:bg-muted transition-colors"
+                >
+                  <Settings className="w-4 h-4 text-muted-foreground" />
+                </motion.button>
+              </Link>
+            </div>
           </div>
         </motion.div>
 
@@ -289,7 +387,7 @@ export default function Home() {
             size="icon"
             onClick={prevSite}
             disabled={sites.length <= 1}
-            className="rounded-full h-10 w-10 border border-slate-200 dark:border-slate-700"
+            className="rounded-full h-10 w-10 border border-border"
             data-testid="button-prev-site"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -305,14 +403,14 @@ export default function Home() {
             >
               {sites.length === 0 ? (
                 <Link href="/settings">
-                  <div className="text-center text-sm text-slate-400 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 rounded-xl cursor-pointer border-2 border-dashed border-slate-300 dark:border-slate-600">
+                  <div className="text-center text-sm text-muted-foreground py-2.5 px-4 bg-muted rounded-xl cursor-pointer border-2 border-dashed border-border">
                     + Add Site
                   </div>
                 </Link>
               ) : (
-                <div className="text-center py-2.5 px-4 bg-gradient-to-r from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="text-center py-2.5 px-4 bg-card rounded-xl border border-border">
                   <div className="flex items-center justify-center gap-2">
-                    <CreditCard className="w-4 h-4 text-rose-500" />
+                    <CreditCard className="w-4 h-4 text-purple-500" />
                     <span className="font-semibold text-sm truncate" data-testid="selected-site-name">
                       {selectedSite?.name || 'Select'}
                     </span>
@@ -327,7 +425,7 @@ export default function Home() {
             size="icon"
             onClick={nextSite}
             disabled={sites.length <= 1}
-            className="rounded-full h-10 w-10 border border-slate-200 dark:border-slate-700"
+            className="rounded-full h-10 w-10 border border-border"
             data-testid="button-next-site"
           >
             <ChevronRight className="w-5 h-5" />
@@ -343,7 +441,7 @@ export default function Home() {
           <Button 
             onClick={handleStart}
             disabled={stats.active || startCheck.isPending || sites.length === 0}
-            className="flex-1 h-12 rounded-xl font-semibold text-base bg-gradient-to-r from-rose-500 to-pink-500 dark:from-rose-600 dark:to-pink-600 text-white shadow-lg shadow-rose-500/20 border-0"
+            className="flex-1 h-12 rounded-xl font-semibold text-base bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/20 border-0"
             data-testid="button-start"
           >
             {stats.active ? (
@@ -354,7 +452,7 @@ export default function Home() {
             ) : (
               <>
                 <Play className="w-5 h-5 mr-2 fill-current" />
-                Start
+                Start Check
               </>
             )}
           </Button>
@@ -363,7 +461,7 @@ export default function Home() {
             onClick={handleStop}
             disabled={!stats.active || stopCheck.isPending}
             variant="outline"
-            className="h-12 px-6 rounded-xl font-semibold border-2 border-slate-300 dark:border-slate-600"
+            className="h-12 px-6 rounded-xl font-semibold border-2"
             data-testid="button-stop"
           >
             <Square className="w-5 h-5" />
@@ -375,12 +473,12 @@ export default function Home() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="text-center text-sm text-slate-500"
+            className="text-center text-sm text-muted-foreground"
           >
             <span className="font-mono">{stats.processed}</span>
-            <span className="text-slate-400"> / </span>
+            <span className="opacity-50"> / </span>
             <span className="font-mono">{stats.total}</span>
-            <span className="text-slate-400 ml-2">processed</span>
+            <span className="opacity-50 ml-2">processed</span>
           </motion.div>
         )}
 
@@ -388,15 +486,15 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl"
+          className="flex gap-2 p-1.5 bg-muted rounded-2xl"
         >
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() => setActiveTab("live")}
             className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
               activeTab === "live"
-                ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-md"
-                : "text-slate-500"
+                ? "bg-card text-emerald-600 dark:text-emerald-400 shadow-md"
+                : "text-muted-foreground"
             }`}
             data-testid="tab-live"
           >
@@ -408,8 +506,8 @@ export default function Home() {
             onClick={() => setActiveTab("dead")}
             className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
               activeTab === "dead"
-                ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-md"
-                : "text-slate-500"
+                ? "bg-card text-rose-600 dark:text-rose-400 shadow-md"
+                : "text-muted-foreground"
             }`}
             data-testid="tab-dead"
           >
@@ -441,7 +539,7 @@ export default function Home() {
                     <XCircle className="w-8 h-8 text-rose-500" />
                   )}
                 </motion.div>
-                <p className="text-slate-400 text-sm">
+                <p className="text-muted-foreground text-sm">
                   {activeTab === "live" ? "No approved cards yet" : "No declined cards yet"}
                 </p>
               </motion.div>
@@ -469,7 +567,7 @@ export default function Home() {
                             result.status === 'live' ? 'bg-emerald-500' : 'bg-rose-500'
                           }`} 
                         />
-                        <p className="font-mono text-xs font-medium truncate text-slate-700 dark:text-slate-200">
+                        <p className="font-mono text-xs font-medium truncate">
                           {result.card}
                         </p>
                       </div>
@@ -479,7 +577,7 @@ export default function Home() {
                         {result.status === 'live' ? 'APPROVED' : 'DECLINED'}
                       </p>
                       {result.message && (
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-1">{result.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{result.message}</p>
                       )}
                     </div>
                     <motion.button
@@ -505,7 +603,7 @@ export default function Home() {
 
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-700/50 px-4 py-3 z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-xl border-t border-border px-4 py-3 z-50">
         <div className="flex items-center justify-around max-w-md mx-auto">
           <Link href="/">
             <motion.button 
@@ -513,10 +611,10 @@ export default function Home() {
               className="flex flex-col items-center gap-1.5 py-1 px-8"
               data-testid="nav-home"
             >
-              <div className="p-2 rounded-xl bg-rose-500/10">
-                <HomeIcon className="w-5 h-5 text-rose-500" />
+              <div className="p-2 rounded-xl bg-purple-500/10">
+                <HomeIcon className="w-5 h-5 text-purple-500" />
               </div>
-              <span className="text-[10px] font-semibold text-rose-500">Home</span>
+              <span className="text-[10px] font-semibold text-purple-500">Home</span>
             </motion.button>
           </Link>
           <Link href="/profile">
@@ -526,9 +624,9 @@ export default function Home() {
               data-testid="nav-profile"
             >
               <div className="p-2">
-                <User className="w-5 h-5 text-slate-400" />
+                <User className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-[10px] font-medium text-slate-400">Profile</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Profile</span>
             </motion.button>
           </Link>
           <Link href="/settings">
@@ -538,9 +636,9 @@ export default function Home() {
               data-testid="nav-settings"
             >
               <div className="p-2">
-                <Settings className="w-5 h-5 text-slate-400" />
+                <Settings className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-[10px] font-medium text-slate-400">Settings</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Settings</span>
             </motion.button>
           </Link>
         </div>

@@ -1,121 +1,132 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Zap, CreditCard } from 'lucide-react';
+import { Zap, Sparkles } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 interface LoadingProps {
   onComplete: () => void;
 }
 
 export default function Loading({ onComplete }: LoadingProps) {
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('Initializing...');
+  const { user } = useAuth();
+  const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
-    const statuses = [
-      { progress: 20, text: 'Connecting to Telegram...' },
-      { progress: 40, text: 'Verifying identity...' },
-      { progress: 60, text: 'Loading user data...' },
-      { progress: 80, text: 'Preparing workspace...' },
-      { progress: 100, text: 'Ready!' },
-    ];
+    const timer1 = setTimeout(() => setShowWelcome(true), 300);
+    const timer2 = setTimeout(() => onComplete(), 2500);
 
-    let currentIndex = 0;
-    const interval = setInterval(() => {
-      if (currentIndex < statuses.length) {
-        setProgress(statuses[currentIndex].progress);
-        setStatus(statuses[currentIndex].text);
-        currentIndex++;
-      } else {
-        clearInterval(interval);
-        setTimeout(onComplete, 500);
-      }
-    }, 400);
-
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, [onComplete]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950/30 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute inset-0 opacity-30">
+        <div 
+          className="absolute inset-0" 
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(147, 197, 253, 0.3) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(147, 197, 253, 0.3) 1px, transparent 1px)
+            `,
+            backgroundSize: '40px 40px',
+          }}
+        />
+      </div>
+
       <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        className="text-center"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="relative z-10 flex flex-col items-center"
       >
-        <div className="relative mb-8">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-            className="w-24 h-24 mx-auto"
-          >
-            <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
-            <div 
-              className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary"
-              style={{ transform: `rotate(${progress * 3.6}deg)` }}
-            />
-          </motion.div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Shield className="w-10 h-10 text-primary" />
-          </div>
-        </div>
-
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-3xl md:text-4xl font-bold text-foreground mb-2 font-orbitron"
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+          className="relative mb-8"
         >
-          NexusChecker
-        </motion.h1>
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="text-muted-foreground mb-8"
-        >
-          Professional Card Validation System
-        </motion.p>
-
-        <div className="w-64 mx-auto mb-4">
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl shadow-purple-500/20 flex items-center justify-center overflow-hidden border-4 border-white dark:border-slate-700">
             <motion.div
-              className="h-full bg-primary"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3 }}
-            />
+              animate={{ 
+                boxShadow: [
+                  '0 0 20px rgba(168, 85, 247, 0.4)',
+                  '0 0 40px rgba(168, 85, 247, 0.6)',
+                  '0 0 20px rgba(168, 85, 247, 0.4)'
+                ]
+              }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center"
+            >
+              <span className="text-4xl font-bold text-white">
+                {user?.firstName?.charAt(0) || 'N'}
+              </span>
+            </motion.div>
           </div>
-        </div>
-
-        <motion.p
-          key={status}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-sm text-muted-foreground"
-        >
-          {status}
-        </motion.p>
+          
+          <motion.div
+            animate={{ 
+              scale: [1, 1.2, 1],
+              opacity: [0.5, 1, 0.5]
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute -inset-3 rounded-[2rem] bg-gradient-to-r from-purple-500/20 via-transparent to-blue-500/20 -z-10 blur-xl"
+          />
+        </motion.div>
 
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="flex items-center justify-center gap-6 mt-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: showWelcome ? 1 : 0, y: showWelcome ? 0 : 10 }}
+          transition={{ duration: 0.4 }}
+          className="text-center"
         >
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Zap className="w-4 h-4 text-primary" />
-            <span>Fast Processing</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <CreditCard className="w-4 h-4 text-primary" />
-            <span>Credit System</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Shield className="w-4 h-4 text-primary" />
-            <span>Secure</span>
-          </div>
+          <h1 className="text-3xl font-light text-slate-700 dark:text-slate-200 mb-2">
+            Welcome
+          </h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-violet-600 dark:from-purple-400 dark:to-violet-400 bg-clip-text text-transparent"
+          >
+            {user?.firstName || 'User'}
+          </motion.p>
         </motion.div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1 }}
+        className="absolute bottom-20 flex items-center gap-2 text-amber-500"
+      >
+        <motion.div
+          animate={{ rotate: [0, 15, -15, 0] }}
+          transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 1 }}
+        >
+          <Zap className="w-5 h-5" />
+        </motion.div>
+        <span className="text-base font-medium">Loading Magic</span>
+        <motion.div
+          animate={{ 
+            scale: [1, 1.2, 1],
+            rotate: [0, 180, 360]
+          }}
+          transition={{ duration: 2, repeat: Infinity }}
+        >
+          <Sparkles className="w-5 h-5" />
+        </motion.div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.5 }}
+        className="absolute bottom-8 text-xs text-slate-400"
+      >
+        @lucee7
       </motion.div>
     </div>
   );
