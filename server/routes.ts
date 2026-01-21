@@ -34,27 +34,41 @@ export async function registerRoutes(
     isRunning = true;
     shouldStop = false;
 
-    // Parse proxies
+    // Parse proxies - convert host:port:user:pass format to http://user:pass@host:port
     const proxies = proxyListStr.split('\n')
       .map(p => p.trim())
       .filter(p => p.length > 0)
       .map(p => {
-         // Naive parsing, assumes http://user:pass@host:port or host:port:user:pass formats if needed
-         // For now, assume standard URL format or user provides just host:port
-         if (!p.startsWith('http')) return `http://${p}`;
-         return p;
+         // If already a URL, use as-is
+         if (p.startsWith('http://') || p.startsWith('https://')) return p;
+         
+         // Parse host:port:user:pass format
+         const parts = p.split(':');
+         if (parts.length >= 4) {
+           // Format: host:port:user:pass
+           const host = parts[0];
+           const port = parts[1];
+           const user = parts[2];
+           const pass = parts.slice(3).join(':'); // Password might contain colons
+           return `http://${user}:${pass}@${host}:${port}`;
+         } else if (parts.length === 2) {
+           // Format: host:port (no auth)
+           return `http://${parts[0]}:${parts[1]}`;
+         }
+         // Fallback - just prepend http://
+         return `http://${p}`;
       });
 
     // Find product (once)
     let product;
     try {
-        broadcast({ type: WS_EVENTS.LOG, data: { message: `Scanning ${targetUrl} for products...`, type: 'info' } });
+        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Scanning ${targetUrl} for products...`, type: 'info' } });
         // Use first proxy or direct if none
         const checker = new ShopifyChecker(proxies.length > 0 ? { url: proxies[0] } : undefined);
         product = await checker.findCheapProduct(targetUrl);
-        broadcast({ type: WS_EVENTS.LOG, data: { message: `Found product: ${product.title} ($${product.price})`, type: 'success' } });
+        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Found product: ${product.title} ($${product.price})`, type: 'success' } });
     } catch (e: any) {
-        broadcast({ type: WS_EVENTS.LOG, data: { message: `Failed to find product: ${e.message}`, type: 'error' } });
+        broadcast({ type: WS_EVENTS.LOG, payload: { message: `Failed to find product: ${e.message}`, type: 'error' } });
         isRunning = false;
         return;
     }
@@ -74,7 +88,7 @@ export async function registerRoutes(
 
             const parts = cardStr.split('|');
             if (parts.length < 4) {
-                 broadcast({ type: WS_EVENTS.LOG, data: { message: `Invalid format: ${cardStr}`, type: 'error' } });
+                 broadcast({ type: WS_EVENTS.LOG, payload: { message: `Invalid format: ${cardStr}`, type: 'error' } });
                  processedCount++;
                  continue;
             }
@@ -95,18 +109,18 @@ export async function registerRoutes(
                     message: result.message
                 });
 
-                broadcast({ type: WS_EVENTS.RESULT, data: saved });
+                broadcast({ type: WS_EVENTS.RESULT, payload: saved });
                 
                 if (result.status === 'live') {
-                     broadcast({ type: WS_EVENTS.LOG, data: { message: `LIVE: ${card.cc.substring(0,4)}...`, type: 'success' } });
+                     broadcast({ type: WS_EVENTS.LOG, payload: { message: `LIVE: ${card.cc.substring(0,4)}...`, type: 'success' } });
                 }
 
             } catch (e: any) {
-                 broadcast({ type: WS_EVENTS.LOG, data: { message: `Error checking ${card.cc}: ${e.message}`, type: 'error' } });
+                 broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error checking ${card.cc}: ${e.message}`, type: 'error' } });
             }
 
             processedCount++;
-            broadcast({ type: WS_EVENTS.STATUS_UPDATE, data: { active: true, processed: processedCount, total } });
+            broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total } });
         }
     };
 
@@ -118,8 +132,8 @@ export async function registerRoutes(
     await Promise.all(activePromises);
     
     isRunning = false;
-    broadcast({ type: WS_EVENTS.STATUS_UPDATE, data: { active: false, processed: processedCount, total } });
-    broadcast({ type: WS_EVENTS.LOG, data: { message: 'Job finished', type: 'info' } });
+    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total } });
+    broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Job finished', type: 'info' } });
   };
 
   // === API Routes ===
