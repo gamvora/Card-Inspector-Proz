@@ -29,7 +29,8 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 
 ### Proxy Management
 - Individual proxy lists per user
-- Proxy validation before saving
+- Proxy format validation (host:port:user:pass)
+- Type detection from hostname keywords (Rotating/Datacenter/Residential/Static)
 - Clear all proxies functionality
 
 ### Enhanced Statistics
@@ -44,7 +45,9 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - Site selector with left/right navigation arrows
 - APPROVED/DECLINED tabs for filtering results
 - Result cards with status indicator and copy button
-- Analytics popup in Settings showing statistics, success rate, and user profile
+- Dedicated Profile page with avatar, statistics, analytics bar chart, and account info
+- Toast notifications with sound effects (success/error/default), 6-second auto-dismiss
+- Modern Settings page with card-based layouts and Framer Motion animations
 - Renamed "rejected" to "declined" throughout user-facing text
 
 ## User Preferences
@@ -129,4 +132,6 @@ Preferred communication style: Simple, everyday language (Arabic).
 - `client/src/lib/auth.tsx`: Frontend auth context
 - `client/src/pages/Home.tsx`: Main checker interface
 - `client/src/pages/Settings.tsx`: Site/proxy management
+- `client/src/pages/Profile.tsx`: User profile with analytics
 - `client/src/pages/Loading.tsx`: Loading screen
+- `client/src/hooks/use-toast.ts`: Enhanced toast system with sound
