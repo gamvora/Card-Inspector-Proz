@@ -1,0 +1,57 @@
+# Determine final status
+            if f"{base_url}/thank_you" in response_text or f"{base_url}/post_purchase" in response_text:
+                print("\n" + "="*60)
+                print(Fore.GREEN + "✅ [CHARGED] SUCCESS!")
+                print(f"💰 Amount: {total_amount}")
+                print(f"🏦 Gateway: {gateway_result}")
+                print(f"🧾 Card: {cc[:4]}****{cc[-4:]}")
+                print("="*60)
+
+            elif 'Your order is confirmed' in response_text:
+                print("\n" + "="*60)
+                print(Fore.GREEN + "✅ [ORDER PLACED] SUCCESS!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'INCORRECT_ZIP' in response_text:
+                print("\n" + "="*60)
+                print(Fore.LIGHTGREEN_EX + "✅ [CHARGED] INCORRECT ZIP!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'INSUFFICIENT_FUNDS' in response_text:
+                print("\n" + "="*60)
+                print(Fore.LIGHTGREEN_EX + "✅ [CHARGED] INSUFFICIENT FUNDS!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'INCORRECT_CVC' in response_text:
+                print("\n" + "="*60)
+                print(Fore.LIGHTGREEN_EX + "✅ [CCN] INCORRECT CVC!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'CompletePaymentChallenge' in response_text or 'AUTHORIZATION_ERROR' in response_text:
+                print("\n" + "="*60)
+                print(Fore.YELLOW + "⚠️ [3DS] VERIFICATION REQUIRED!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif '/authentications/' in response_text:
+                print("\n" + "="*60)
+                print(Fore.YELLOW + "⚠️ [3DS] CARD REQUIRES 3D SECURE!")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            elif 'processingError' in response_text:
+                error_code = response_json.get('data', {}).get('receipt', {}).get('processingError', {}).get('code', 'Unknown Error')
+                print("\n" + "="*60)
+                print(Fore.RED + f"❌ [DEAD] {error_code}")
+                print(f"💰 Amount: {total_amount}")
+                print("="*60)
+
+            else:
+                print("\n" + "="*60)
+                print(Fore.YELLOW + "⚠️ [UNKNOWN] Response needs review")
+                print(f"Response: {response_text[:500]}")
+                print("="*60)

