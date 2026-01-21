@@ -58,9 +58,17 @@ Preferred communication style: Simple, everyday language (Arabic).
 
 ### Backend Architecture
 - **Framework**: Express.js with TypeScript
-- **WebSocket**: `ws` library for real-time communication
+- **WebSocket**: `ws` library for real-time communication (per-user scoped)
 - **Telegram Bot**: `/api/telegram/webhook` for bot commands
-- **Auth Middleware**: x-telegram-id header for user identification
+- **Auth Middleware**: JWT tokens (Authorization: Bearer) for production, x-telegram-id fallback in development only
+
+### Security Features
+- **JWT Authentication**: Secure tokens stored in localStorage, used in Authorization header
+- **Per-user WebSocket Scoping**: Users only receive their own messages/updates
+- **Ownership Checks**: All site/proxy mutations verify user ownership before execution
+- **Per-user Job Management**: Each user has isolated checker state (Map<userId, jobState>)
+- **Admin-only Routes**: Global settings require isAdmin verification
+- **Production Security**: x-telegram-id header fallback is blocked when NODE_ENV !== 'development'
 
 ### Database Schema
 - **users**: Telegram user data, credits, statistics
