@@ -111,13 +111,15 @@ Preferred communication style: Simple, everyday language (Arabic).
 
 ### Core Checker Service
 - **Location**: `server/python/checker.py`
-- **6-Step Process**:
-  1. Find cheapest available product
-  2. Get checkout session tokens
-  3. Tokenize card via Shopify
-  4. Get shipping proposal
-  5. Submit payment
-  6. Poll for receipt result
+- **Sequential 6-Step Process** (all must complete before returning result):
+  1. Find cheapest available product from /products.json
+  2. Get checkout session tokens (checkout_token, web_build_id, session_token, queue_token, stable_id, payment_method_identifier)
+  3. Get card token/nonce from deposit.shopifycs.com/sessions
+  4. Get proposal and shipping rates (handle, tax, total_amount, gateway)
+  5. Submit payment for completion (SubmitForCompletion mutation)
+  6. Poll for final receipt status (PollForReceipt query)
+- **Retry Logic**: MAX_RETRIES=5 for each step
+- **Result Types**: [CHARGED] SUCCESS, [CHARGED] INSUFFICIENT FUNDS, [CCN] INCORRECT CVC, [3DS] VERIFICATION REQUIRED, [DEAD] with error codes
 
 ### Real-time WebSocket Events
 - `status_update`: Active state, processed/total, charged/rejected counts
