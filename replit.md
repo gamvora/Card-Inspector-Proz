@@ -33,12 +33,15 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - Session-specific live/dead counts
 - Real-time statistics display
 
-### UI Improvements
-- Loading screen with animated progress
-- Site selector dropdown on home page
-- Copy single card or copy all cards buttons
-- Statistics cards showing totals and session data
-- User profile display with admin badge
+### UI Improvements (January 2026)
+- Clean mobile-first design with bottom navigation (Home, Profile, Settings)
+- Header with credits balance, total approved/declined stats
+- Card input textarea with card count display
+- Site selector with left/right navigation arrows
+- APPROVED/DECLINED tabs for filtering results
+- Result cards with status indicator and copy button
+- Analytics popup in Settings showing statistics, success rate, and user profile
+- Renamed "rejected" to "declined" throughout user-facing text
 
 ## User Preferences
 
