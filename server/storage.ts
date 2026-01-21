@@ -65,6 +65,10 @@ export interface IStorage {
   // Credit Transactions
   addCreditTransaction(userId: number, amount: number, type: string, description?: string, adminId?: string): Promise<CreditTransaction>;
   getCreditTransactions(userId: number, limit?: number): Promise<CreditTransaction[]>;
+
+  // Global Stats & Leaderboard
+  getGlobalStats(): Promise<{ totalCards: number; totalLive: number; totalDead: number; hitRate: number }>;
+  getLeaderboard(limit?: number): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; totalCharged: number; rank: number }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -286,6 +290,35 @@ export class DatabaseStorage implements IStorage {
 
   async getCreditTransactions(userId: number, limit = 50): Promise<CreditTransaction[]> {
     return db.select().from(creditTransactions).where(eq(creditTransactions.userId, userId)).orderBy(desc(creditTransactions.createdAt)).limit(limit);
+  }
+
+  async getGlobalStats(): Promise<{ totalCards: number; totalLive: number; totalDead: number; hitRate: number }> {
+    const result = await db.select({
+      totalLive: sql<number>`COALESCE(SUM(${users.totalCharged}), 0)::int`,
+      totalDead: sql<number>`COALESCE(SUM(${users.totalRejected}), 0)::int`,
+    }).from(users);
+    
+    const totalLive = result[0]?.totalLive || 0;
+    const totalDead = result[0]?.totalDead || 0;
+    const totalCards = totalLive + totalDead;
+    const hitRate = totalCards > 0 ? (totalLive / totalCards) * 100 : 0;
+    
+    return { totalCards, totalLive, totalDead, hitRate };
+  }
+
+  async getLeaderboard(limit = 10): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; totalCharged: number; rank: number }>> {
+    const topUsers = await db.select({
+      userId: users.id,
+      username: users.username,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      totalCharged: users.totalCharged,
+    }).from(users).orderBy(desc(users.totalCharged)).limit(limit);
+    
+    return topUsers.map((user, index) => ({
+      ...user,
+      rank: index + 1,
+    }));
   }
 }
 

@@ -1,29 +1,56 @@
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth, authFetch } from "@/lib/auth";
 import { Link } from "wouter";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import {
   Home as HomeIcon,
   User,
   Settings as SettingsIcon,
   Crown,
   TrendingUp,
-  TrendingDown,
-  Coins,
+  Zap,
   BarChart3,
   Target,
-  Zap,
-  Award,
   Activity,
-  Calendar,
-  Shield,
+  Globe,
+  Users,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+
+type ChartType = "bar" | "donut" | "area";
+
+interface GlobalStats {
+  totalCards: number;
+  totalLive: number;
+  totalDead: number;
+  hitRate: number;
+}
+
+interface LeaderboardUser {
+  userId: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  totalCharged: number;
+  rank: number;
+}
+
+interface OnlineUser {
+  telegramId: string;
+  userId: number;
+  username: string | null;
+  firstName: string | null;
+}
 
 export default function Profile() {
   const { user } = useAuth();
+  const [chartType, setChartType] = useState<ChartType>("bar");
+  const [showAllOnline, setShowAllOnline] = useState(false);
 
   const { data: userStats } = useQuery({
     queryKey: ["/api/stats"],
@@ -34,15 +61,38 @@ export default function Profile() {
     },
   });
 
+  const { data: globalStats } = useQuery<GlobalStats>({
+    queryKey: ["/api/stats/global"],
+    queryFn: async () => {
+      const res = await authFetch("/api/stats/global");
+      if (!res.ok) return { totalCards: 0, totalLive: 0, totalDead: 0, hitRate: 0 };
+      return res.json();
+    },
+  });
+
+  const { data: leaderboard = [] } = useQuery<LeaderboardUser[]>({
+    queryKey: ["/api/leaderboard"],
+    queryFn: async () => {
+      const res = await authFetch("/api/leaderboard");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: onlineUsers = [] } = useQuery<OnlineUser[]>({
+    queryKey: ["/api/online-users"],
+    queryFn: async () => {
+      const res = await authFetch("/api/online-users");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+
   const totalChecked = (userStats?.totalCharged || 0) + (userStats?.totalRejected || 0);
   const successRate = totalChecked > 0 
     ? ((userStats?.totalCharged || 0) / totalChecked * 100) 
     : 0;
-
-  const getTelegramPhotoUrl = () => {
-    if (!user?.telegramId) return null;
-    return null;
-  };
 
   const getInitials = () => {
     if (user?.firstName) {
@@ -54,286 +104,404 @@ export default function Profile() {
     return "U";
   };
 
-  const getMembershipStatus = () => {
-    return "Active";
+  const getRankColor = (rank: number) => {
+    if (rank === 1) return "from-amber-400 to-yellow-500";
+    if (rank === 2) return "from-slate-300 to-slate-400";
+    if (rank === 3) return "from-orange-400 to-amber-600";
+    return "from-slate-500 to-slate-600";
   };
 
+  const getRankBg = (rank: number) => {
+    if (rank === 1) return "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-500/10 dark:to-yellow-500/10 border-amber-200/50 dark:border-amber-500/20";
+    if (rank === 2) return "bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-500/10 dark:to-gray-500/10 border-slate-200/50 dark:border-slate-500/20";
+    if (rank === 3) return "bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-500/10 dark:to-amber-500/10 border-orange-200/50 dark:border-orange-500/20";
+    return "bg-white/50 dark:bg-slate-800/50";
+  };
+
+  const displayedOnlineUsers = showAllOnline ? onlineUsers : onlineUsers.slice(0, 3);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/30 pb-24">
-      
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-purple-500/10 to-pink-500/20 dark:from-indigo-500/10 dark:via-purple-500/5 dark:to-pink-500/10" />
-        <div className="absolute top-0 left-0 w-full h-full">
-          <div className="absolute top-10 left-10 w-32 h-32 bg-indigo-400/20 rounded-full blur-3xl" />
-          <div className="absolute top-20 right-10 w-24 h-24 bg-pink-400/20 rounded-full blur-3xl" />
-        </div>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative pt-8 pb-6 px-6 text-center"
-        >
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", duration: 0.6 }}
-            className="relative inline-block mb-4"
-          >
-            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full blur opacity-75 animate-pulse" />
-            <Avatar className="relative w-24 h-24 border-4 border-white dark:border-slate-800 shadow-2xl">
-              <AvatarImage src={getTelegramPhotoUrl() || undefined} />
-              <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-                {getInitials()}
-              </AvatarFallback>
-            </Avatar>
-            {user?.isAdmin && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.3 }}
-                className="absolute -top-1 -right-1 w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg"
-              >
-                <Crown className="w-4 h-4 text-white" />
-              </motion.div>
-            )}
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-2xl font-bold text-slate-900 dark:text-white mb-1"
-          >
-            {user?.firstName} {user?.lastName}
-          </motion.h1>
-          
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="text-indigo-600 dark:text-indigo-400 font-medium"
-          >
-            @{user?.username || user?.telegramId}
-          </motion.p>
-
-          {user?.isAdmin && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 }}
-              className="inline-flex items-center gap-1.5 mt-3 px-4 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-full"
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-500" />
-              <span className="text-xs font-bold text-amber-600 dark:text-amber-400">ADMIN</span>
-            </motion.div>
-          )}
-        </motion.div>
+    <div className="min-h-screen bg-background pb-24">
+      <div className="relative">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
+        <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, hsl(var(--muted-foreground) / 0.1) 1px, transparent 0)', backgroundSize: '20px 20px' }} />
       </div>
 
-      <main className="px-4 -mt-2 space-y-4">
-        
-        <motion.div
+      <main className="relative px-4 pt-6 space-y-5">
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="w-5 h-5 text-emerald-500" />
+            <h2 className="font-bold text-lg">Online Users</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{onlineUsers.length} online</span>
+          </div>
+
+          <Card className="p-4 rounded-2xl bg-card/80 backdrop-blur-sm border-border/50">
+            <div className="space-y-3">
+              <AnimatePresence>
+                {displayedOnlineUsers.map((onlineUser, index) => (
+                  <motion.div
+                    key={onlineUser.telegramId}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted/50 transition-colors"
+                    data-testid={`online-user-${onlineUser.telegramId}`}
+                  >
+                    <div className="relative">
+                      <Avatar className="w-10 h-10 border-2 border-background">
+                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/20 text-sm font-bold">
+                          {onlineUser.firstName?.[0] || onlineUser.username?.[0] || "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-background" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">{onlineUser.firstName || "User"}</p>
+                      <p className="text-xs text-muted-foreground truncate">@{onlineUser.username || onlineUser.telegramId}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              
+              {onlineUsers.length > 3 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAllOnline(!showAllOnline)}
+                  className="w-full text-muted-foreground hover:text-foreground"
+                  data-testid="button-show-more-online"
+                >
+                  {showAllOnline ? (
+                    <>Hide <ChevronUp className="w-4 h-4 ml-1" /></>
+                  ) : (
+                    <>Show {onlineUsers.length - 3} More Users <ChevronDown className="w-4 h-4 ml-1" /></>
+                  )}
+                </Button>
+              )}
+
+              {onlineUsers.length === 0 && (
+                <p className="text-center text-muted-foreground text-sm py-4">No users online</p>
+              )}
+            </div>
+          </Card>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Crown className="w-5 h-5 text-amber-500" />
+            <h2 className="font-bold text-lg">Top Karders</h2>
+          </div>
+
+          <Card className="p-4 rounded-2xl bg-card/80 backdrop-blur-sm border-border/50">
+            <div className="space-y-3">
+              {leaderboard.slice(0, 5).map((leader, index) => (
+                <motion.div
+                  key={leader.userId}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${getRankBg(leader.rank)}`}
+                  data-testid={`leaderboard-user-${leader.rank}`}
+                >
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getRankColor(leader.rank)} flex items-center justify-center text-white font-bold text-sm shadow-lg`}>
+                    #{leader.rank}
+                  </div>
+                  <Avatar className="w-10 h-10 border-2 border-background">
+                    <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold">
+                      {leader.firstName?.[0] || leader.username?.[0] || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{leader.firstName || "User"}</p>
+                    <p className="text-xs text-muted-foreground truncate">@{leader.username || `user${leader.userId}`}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-emerald-600 dark:text-emerald-400">{leader.totalCharged.toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground uppercase">live cards</p>
+                  </div>
+                </motion.div>
+              ))}
+
+              {leaderboard.length === 0 && (
+                <p className="text-center text-muted-foreground text-sm py-4">No data available</p>
+              )}
+            </div>
+          </Card>
+        </motion.section>
+
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="grid grid-cols-3 gap-3"
         >
-          <Card className="p-4 text-center bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-500/10 dark:to-orange-500/10 border-amber-200/50 dark:border-amber-500/20 rounded-2xl">
-            <div className="w-10 h-10 mx-auto mb-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <Coins className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-5 h-5 text-indigo-500" />
+            <h2 className="font-bold text-lg">Statistics</h2>
+          </div>
+
+          <Card className="p-5 rounded-2xl bg-card/80 backdrop-blur-sm border-border/50">
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="p-4 rounded-xl bg-muted/50 border border-border/50">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Total Cards</p>
+                <p className="text-2xl font-bold" data-testid="stat-total-cards">{totalChecked.toLocaleString()}</p>
+              </div>
+              <div className="p-4 rounded-xl bg-muted/50 border border-border/50">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Hit Rate</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="stat-hit-rate">{successRate.toFixed(1)}%</p>
+                <p className="text-[10px] text-muted-foreground">{((globalStats?.hitRate || 0) - successRate).toFixed(1)}% vs global</p>
+              </div>
+              <div className="p-4 rounded-xl bg-muted/50 border border-border/50">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Live Cards</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="stat-live-cards">{(userStats?.totalCharged || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground">Hits on site</p>
+              </div>
+              <div className="p-4 rounded-xl bg-muted/50 border border-border/50">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Global Avg</p>
+                <p className="text-2xl font-bold" data-testid="stat-global-avg">{(globalStats?.hitRate || 0).toFixed(1)}%</p>
+                <p className="text-[10px] text-muted-foreground">{(globalStats?.totalCards || 0).toLocaleString()} total</p>
+              </div>
             </div>
-            <motion.p
-              key={user?.credits}
-              initial={{ scale: 1.2 }}
-              animate={{ scale: 1 }}
-              className="text-xl font-bold text-amber-600 dark:text-amber-400"
-              data-testid="profile-credits"
-            >
-              {user?.credits?.toLocaleString() || 0}
-            </motion.p>
-            <p className="text-[10px] font-medium text-amber-600/70 uppercase tracking-wide">Credits</p>
+
+            <div className="flex items-center justify-center gap-2 mb-5 p-1 bg-muted/50 rounded-xl">
+              <Button
+                variant={chartType === "bar" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setChartType("bar")}
+                className="flex-1 rounded-lg"
+                data-testid="button-chart-bar"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={chartType === "donut" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setChartType("donut")}
+                className="flex-1 rounded-lg"
+                data-testid="button-chart-donut"
+              >
+                <Target className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={chartType === "area" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setChartType("area")}
+                className="flex-1 rounded-lg"
+                data-testid="button-chart-area"
+              >
+                <TrendingUp className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <AnimatePresence mode="wait">
+              {chartType === "bar" && (
+                <motion.div
+                  key="bar"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="h-48"
+                >
+                  <div className="flex items-end justify-around h-40 gap-8">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-end gap-1">
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${Math.min((totalChecked / Math.max(globalStats?.totalCards || 1, 1)) * 100, 100)}%` }}
+                          transition={{ duration: 0.8 }}
+                          className="w-8 bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t"
+                          style={{ minHeight: "20px", maxHeight: "120px" }}
+                        />
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: "100%" }}
+                          transition={{ duration: 0.8, delay: 0.1 }}
+                          className="w-8 bg-gradient-to-t from-amber-500 to-amber-400 rounded-t"
+                          style={{ minHeight: "20px", maxHeight: "120px" }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground">Total</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-end gap-1">
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${Math.min((userStats?.totalCharged || 0) / Math.max(globalStats?.totalLive || 1, 1) * 100, 100)}%` }}
+                          transition={{ duration: 0.8, delay: 0.2 }}
+                          className="w-8 bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t"
+                          style={{ minHeight: "20px", maxHeight: "120px" }}
+                        />
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: "100%" }}
+                          transition={{ duration: 0.8, delay: 0.3 }}
+                          className="w-8 bg-gradient-to-t from-amber-500 to-amber-400 rounded-t"
+                          style={{ minHeight: "20px", maxHeight: "120px" }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground">Live</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-end gap-1">
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${Math.min((userStats?.totalRejected || 0) / Math.max(globalStats?.totalDead || 1, 1) * 100, 100)}%` }}
+                          transition={{ duration: 0.8, delay: 0.4 }}
+                          className="w-8 bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t"
+                          style={{ minHeight: "20px", maxHeight: "120px" }}
+                        />
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: "100%" }}
+                          transition={{ duration: 0.8, delay: 0.5 }}
+                          className="w-8 bg-gradient-to-t from-amber-500 to-amber-400 rounded-t"
+                          style={{ minHeight: "20px", maxHeight: "120px" }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground">Dead</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-center gap-6 mt-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-sm bg-indigo-500" />
+                      <span className="text-xs text-muted-foreground">Your Stats</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-sm bg-amber-500" />
+                      <span className="text-xs text-muted-foreground">Global Stats</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {chartType === "donut" && (
+                <motion.div
+                  key="donut"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="h-48 flex flex-col items-center justify-center"
+                >
+                  <div className="relative w-40 h-40">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke="hsl(var(--destructive) / 0.3)"
+                        strokeWidth="12"
+                      />
+                      <motion.circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth="12"
+                        strokeLinecap="round"
+                        initial={{ strokeDasharray: "0 251" }}
+                        animate={{ strokeDasharray: `${successRate * 2.51} 251` }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-3xl font-bold">{successRate.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-center gap-6 mt-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-primary" />
+                      <span className="text-xs text-muted-foreground">Your Live</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-destructive/30" />
+                      <span className="text-xs text-muted-foreground">Your Dead</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {chartType === "area" && (
+                <motion.div
+                  key="area"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="h-48"
+                >
+                  <div className="relative h-40 w-full">
+                    <svg className="w-full h-full" viewBox="0 0 100 60" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+                        </linearGradient>
+                        <linearGradient id="areaGradientRed" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <motion.path
+                        d="M0,60 L0,50 C20,40 40,30 60,20 C80,10 90,5 100,5 L100,60 Z"
+                        fill="url(#areaGradientRed)"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 1 }}
+                      />
+                      <motion.path
+                        d="M0,60 L0,55 C20,50 40,40 60,30 C80,20 90,15 100,10 L100,60 Z"
+                        fill="url(#areaGradient)"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 1, delay: 0.3 }}
+                      />
+                      <motion.path
+                        d="M0,55 C20,50 40,40 60,30 C80,20 90,15 100,10"
+                        fill="none"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth="1"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 1.5 }}
+                      />
+                      <motion.path
+                        d="M0,50 C20,40 40,30 60,20 C80,10 90,5 100,5"
+                        fill="none"
+                        stroke="hsl(var(--destructive))"
+                        strokeWidth="1"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 1.5, delay: 0.2 }}
+                      />
+                    </svg>
+                    <div className="absolute bottom-0 left-0 text-xs text-muted-foreground">Your Stats</div>
+                    <div className="absolute bottom-0 right-0 text-xs text-muted-foreground">Global Stats</div>
+                  </div>
+                  <div className="flex justify-center gap-6 mt-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-primary" />
+                      <span className="text-xs text-muted-foreground">Live</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-destructive" />
+                      <span className="text-xs text-muted-foreground">Dead</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
-
-          <Card className="p-4 text-center bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-500/10 dark:to-green-500/10 border-emerald-200/50 dark:border-emerald-500/20 rounded-2xl">
-            <div className="w-10 h-10 mx-auto mb-2 bg-gradient-to-br from-emerald-400 to-green-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <TrendingUp className="w-5 h-5 text-white" />
-            </div>
-            <motion.p
-              key={userStats?.totalCharged}
-              initial={{ scale: 1.2 }}
-              animate={{ scale: 1 }}
-              className="text-xl font-bold text-emerald-600 dark:text-emerald-400"
-              data-testid="profile-approved"
-            >
-              {(userStats?.totalCharged || 0).toLocaleString()}
-            </motion.p>
-            <p className="text-[10px] font-medium text-emerald-600/70 uppercase tracking-wide">Approved</p>
-          </Card>
-
-          <Card className="p-4 text-center bg-gradient-to-br from-rose-50 to-red-50 dark:from-rose-500/10 dark:to-red-500/10 border-rose-200/50 dark:border-rose-500/20 rounded-2xl">
-            <div className="w-10 h-10 mx-auto mb-2 bg-gradient-to-br from-rose-400 to-red-500 rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/20">
-              <TrendingDown className="w-5 h-5 text-white" />
-            </div>
-            <motion.p
-              key={userStats?.totalRejected}
-              initial={{ scale: 1.2 }}
-              animate={{ scale: 1 }}
-              className="text-xl font-bold text-rose-600 dark:text-rose-400"
-              data-testid="profile-declined"
-            >
-              {(userStats?.totalRejected || 0).toLocaleString()}
-            </motion.p>
-            <p className="text-[10px] font-medium text-rose-600/70 uppercase tracking-wide">Declined</p>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <Card className="p-5 rounded-3xl bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <BarChart3 className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg">Statistics</h2>
-                <p className="text-xs text-slate-400">Your performance overview</p>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Success Rate</span>
-                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    {successRate.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="relative h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${successRate}%` }}
-                    transition={{ duration: 1, delay: 0.5 }}
-                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Target className="w-4 h-4 text-indigo-500" />
-                    <span className="text-xs font-medium text-slate-500">Total Checked</span>
-                  </div>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {totalChecked.toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap className="w-4 h-4 text-amber-500" />
-                    <span className="text-xs font-medium text-slate-500">Hit Rate</span>
-                  </div>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {successRate.toFixed(1)}%
-                  </p>
-                </div>
-              </div>
-
-              <div className="relative pt-4">
-                <div className="flex justify-center items-end gap-3 h-32">
-                  <div className="flex flex-col items-center gap-2">
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${Math.min((userStats?.totalCharged || 1) / Math.max(totalChecked, 1) * 100, 100)}%` }}
-                      transition={{ duration: 0.8, delay: 0.3 }}
-                      className="w-12 bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-t-lg min-h-[20px]"
-                      style={{ maxHeight: "100px" }}
-                    />
-                    <span className="text-xs font-medium text-slate-500">Live</span>
-                  </div>
-                  <div className="flex flex-col items-center gap-2">
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${Math.min((userStats?.totalRejected || 1) / Math.max(totalChecked, 1) * 100, 100)}%` }}
-                      transition={{ duration: 0.8, delay: 0.4 }}
-                      className="w-12 bg-gradient-to-t from-rose-500 to-rose-400 rounded-t-lg min-h-[20px]"
-                      style={{ maxHeight: "100px" }}
-                    />
-                    <span className="text-xs font-medium text-slate-500">Dead</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card className="p-5 rounded-3xl bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-                <Activity className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg">Account Info</h2>
-                <p className="text-xs text-slate-400">Your membership details</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <User className="w-4 h-4 text-slate-500" />
-                  </div>
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Username</span>
-                </div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                  @{user?.username || "N/A"}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <Calendar className="w-4 h-4 text-slate-500" />
-                  </div>
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Account Status</span>
-                </div>
-                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                  {getMembershipStatus()}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between py-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <Award className="w-4 h-4 text-slate-500" />
-                  </div>
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Status</span>
-                </div>
-                <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                  user?.isAdmin 
-                    ? "bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400" 
-                    : "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
-                }`}>
-                  {user?.isAdmin ? "Admin" : "Member"}
-                </span>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-
+        </motion.section>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-700/50 px-4 py-3 z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-xl border-t border-border/50 px-4 py-3 z-50">
         <div className="flex items-center justify-around max-w-md mx-auto">
           <Link href="/">
             <motion.button
@@ -342,9 +510,9 @@ export default function Profile() {
               data-testid="nav-home"
             >
               <div className="p-2">
-                <HomeIcon className="w-5 h-5 text-slate-400" />
+                <HomeIcon className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-[10px] font-medium text-slate-400">Home</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Home</span>
             </motion.button>
           </Link>
           <Link href="/profile">
@@ -353,10 +521,10 @@ export default function Profile() {
               className="flex flex-col items-center gap-1.5 py-1 px-8"
               data-testid="nav-profile"
             >
-              <div className="p-2 rounded-xl bg-indigo-500/10">
-                <User className="w-5 h-5 text-indigo-500" />
+              <div className="p-2 rounded-xl bg-primary/10">
+                <User className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-[10px] font-semibold text-indigo-500">Profile</span>
+              <span className="text-[10px] font-semibold text-primary">Profile</span>
             </motion.button>
           </Link>
           <Link href="/settings">
@@ -366,9 +534,9 @@ export default function Profile() {
               data-testid="nav-settings"
             >
               <div className="p-2">
-                <SettingsIcon className="w-5 h-5 text-slate-400" />
+                <SettingsIcon className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-[10px] font-medium text-slate-400">Settings</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Settings</span>
             </motion.button>
           </Link>
         </div>

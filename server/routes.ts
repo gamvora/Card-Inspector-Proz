@@ -96,6 +96,31 @@ export async function registerRoutes(
     });
   }, 30000);
 
+  // Track online users from WebSocket connections
+  const onlineUsersCache = new Map<string, { telegramId: string; userId: number; lastSeen: Date }>();
+  
+  const getOnlineUsers = async () => {
+    const onlineList: Array<{ telegramId: string; userId: number; username: string | null; firstName: string | null }> = [];
+    const seenIds = new Set<string>();
+    
+    const clients = Array.from(wss.clients) as UserWebSocket[];
+    for (const userClient of clients) {
+      if (userClient.readyState === WebSocket.OPEN && userClient.telegramId && !seenIds.has(userClient.telegramId)) {
+        seenIds.add(userClient.telegramId);
+        const user = await storage.getUserByTelegramId(userClient.telegramId);
+        if (user) {
+          onlineList.push({
+            telegramId: userClient.telegramId,
+            userId: user.id,
+            username: user.username,
+            firstName: user.firstName,
+          });
+        }
+      }
+    }
+    return onlineList;
+  };
+
   // === Job Management (Per-User) ===
   interface UserJob {
     isRunning: boolean;
@@ -787,6 +812,33 @@ export async function registerRoutes(
       totalRejected: user.totalRejected,
       credits: user.credits,
     });
+  });
+
+  app.get('/api/stats/global', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const globalStats = await storage.getGlobalStats();
+      res.json(globalStats);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/leaderboard', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const leaderboard = await storage.getLeaderboard(10);
+      res.json(leaderboard);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/online-users', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const onlineUsers = await getOnlineUsers();
+      res.json(onlineUsers);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Initialize Telegram bot (webhook in production, polling in development)

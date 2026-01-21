@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { authFetch } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
+import { useTheme, Theme } from '@/lib/ThemeProvider';
 import { 
   Globe, 
   Plus, 
@@ -30,8 +31,24 @@ import {
   CheckCircle2,
   XCircle,
   Activity,
+  Sun,
+  Moon,
+  Laptop,
+  Leaf,
+  Sunset,
+  Stars,
+  Palette,
 } from 'lucide-react';
 import { Link } from 'wouter';
+
+const themeOptions: { value: Theme; label: string; icon: typeof Sun; color: string }[] = [
+  { value: 'light', label: 'Light', icon: Sun, color: 'text-amber-500' },
+  { value: 'dark', label: 'Dark', icon: Moon, color: 'text-slate-400' },
+  { value: 'system', label: 'System', icon: Laptop, color: 'text-blue-500' },
+  { value: 'nighty', label: 'Nighty', icon: Stars, color: 'text-purple-500' },
+  { value: 'forest', label: 'Forest', icon: Leaf, color: 'text-emerald-500' },
+  { value: 'sunset', label: 'Sunset', icon: Sunset, color: 'text-orange-500' },
+];
 
 interface Site {
   id: number;
@@ -59,11 +76,13 @@ interface ProxyTestResult {
 export default function Settings() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteUrl, setNewSiteUrl] = useState('');
   const [newProxies, setNewProxies] = useState('');
   const [testingProxy, setTestingProxy] = useState<string | null>(null);
   const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
+  const [showThemeDropdown, setShowThemeDropdown] = useState(false);
 
   const { data: sites = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -209,7 +228,7 @@ export default function Settings() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950/30 pb-24">
+    <div className="min-h-screen bg-background pb-24">
       
       <motion.header 
         initial={{ opacity: 0, y: -20 }}
@@ -222,20 +241,72 @@ export default function Settings() {
               <SettingsIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white">Settings</h1>
-              <p className="text-xs text-slate-400">Manage your configuration</p>
+              <h1 className="text-xl font-bold">Settings</h1>
+              <p className="text-xs text-muted-foreground">Manage your configuration</p>
             </div>
           </div>
-          {user?.isAdmin && (
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 dark:bg-amber-500/20 rounded-full"
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-xs font-bold text-amber-600">Admin</span>
-            </motion.div>
-          )}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowThemeDropdown(!showThemeDropdown)}
+                className="rounded-xl"
+                data-testid="button-theme-toggle"
+              >
+                {(() => {
+                  const currentTheme = themeOptions.find(t => t.value === theme);
+                  const Icon = currentTheme?.icon || Sun;
+                  return <Icon className={`w-5 h-5 ${currentTheme?.color || ''}`} />;
+                })()}
+              </Button>
+              <AnimatePresence>
+                {showThemeDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    className="absolute right-0 top-12 z-50 w-48 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+                    data-testid="theme-dropdown"
+                  >
+                    {themeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isActive = theme === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          onClick={() => {
+                            setTheme(option.value);
+                            setShowThemeDropdown(false);
+                          }}
+                          className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-muted/50 ${
+                            isActive ? 'bg-primary/10 text-primary' : 'text-foreground'
+                          }`}
+                          data-testid={`theme-option-${option.value}`}
+                        >
+                          <Icon className={`w-4 h-4 ${option.color}`} />
+                          <span>{option.label}</span>
+                          {isActive && (
+                            <div className="ml-auto w-2 h-2 rounded-full bg-primary" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            {user?.isAdmin && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 dark:bg-amber-500/20 rounded-full"
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-600" />
+                <span className="text-xs font-bold text-amber-600">Admin</span>
+              </motion.div>
+            )}
+          </div>
         </div>
       </motion.header>
 

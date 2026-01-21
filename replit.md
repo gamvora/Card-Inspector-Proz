@@ -45,9 +45,15 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - Site selector with left/right navigation arrows
 - APPROVED/DECLINED tabs for filtering results
 - Result cards with status indicator and copy button
-- Dedicated Profile page with avatar, statistics, analytics bar chart, and account info
+- Dedicated Profile page with:
+  - Online Users section with live status indicators
+  - Top Karders leaderboard with rankings
+  - Statistics cards (Total Cards, Hit Rate, Live Cards, Global Avg)
+  - Three chart types with tab navigation (Bar, Donut, Area)
 - Toast notifications with sound effects (success/error/default), 6-second auto-dismiss
 - Modern Settings page with card-based layouts and Framer Motion animations
+- Multi-theme system: Light, Dark, System, Nighty (purple), Forest (green), Sunset (warm)
+- Theme selector dropdown in Settings header
 - Renamed "rejected" to "declined" throughout user-facing text
 
 ## User Preferences

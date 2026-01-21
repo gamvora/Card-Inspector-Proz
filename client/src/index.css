@@ -28,33 +28,114 @@
   --radius: 0.25rem;
 }
 
+.light {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 142 76% 36%;
+  --primary-foreground: 355.7 100% 97.3%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 142 76% 36%;
+}
+
 .dark {
-  /* Cyberpunk Palette - Dark Mode (Primary) */
-  --background: 240 10% 3.9%; /* Deep Black/Blue */
+  --background: 240 10% 3.9%;
   --foreground: 0 0% 98%;
-  --card: 240 10% 6%; /* Slightly lighter black */
+  --card: 240 10% 6%;
   --card-foreground: 0 0% 98%;
   --popover: 240 10% 3.9%;
   --popover-foreground: 0 0% 98%;
-  
-  --primary: 142 70% 50%; /* Neon Green */
+  --primary: 142 70% 50%;
   --primary-foreground: 144.9 80.4% 10%;
-  
   --secondary: 240 3.7% 15.9%;
   --secondary-foreground: 0 0% 98%;
-  
   --muted: 240 3.7% 15.9%;
   --muted-foreground: 240 5% 64.9%;
-  
-  --accent: 262 80% 50%; /* Cyber Purple */
+  --accent: 262 80% 50%;
   --accent-foreground: 0 0% 98%;
-  
-  --destructive: 0 85% 60%; /* Neon Red */
+  --destructive: 0 85% 60%;
   --destructive-foreground: 0 0% 98%;
-  
   --border: 240 3.7% 15.9%;
   --input: 240 3.7% 15.9%;
   --ring: 142 70% 50%;
+}
+
+.nighty {
+  --background: 250 25% 8%;
+  --foreground: 210 40% 98%;
+  --card: 250 25% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 250 25% 8%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 270 75% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 250 20% 18%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 250 20% 18%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 280 70% 55%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 250 20% 18%;
+  --input: 250 20% 18%;
+  --ring: 270 75% 60%;
+}
+
+.forest {
+  --background: 150 30% 8%;
+  --foreground: 120 20% 95%;
+  --card: 150 30% 12%;
+  --card-foreground: 120 20% 95%;
+  --popover: 150 30% 8%;
+  --popover-foreground: 120 20% 95%;
+  --primary: 142 70% 45%;
+  --primary-foreground: 150 30% 5%;
+  --secondary: 150 25% 18%;
+  --secondary-foreground: 120 20% 95%;
+  --muted: 150 25% 18%;
+  --muted-foreground: 140 15% 60%;
+  --accent: 160 60% 40%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 150 25% 20%;
+  --input: 150 25% 18%;
+  --ring: 142 70% 45%;
+}
+
+.sunset {
+  --background: 30 30% 97%;
+  --foreground: 20 25% 15%;
+  --card: 35 40% 95%;
+  --card-foreground: 20 25% 15%;
+  --popover: 30 30% 97%;
+  --popover-foreground: 20 25% 15%;
+  --primary: 25 90% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 35 30% 88%;
+  --secondary-foreground: 20 25% 15%;
+  --muted: 35 30% 88%;
+  --muted-foreground: 20 15% 45%;
+  --accent: 15 80% 55%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 35 25% 85%;
+  --input: 35 25% 88%;
+  --ring: 25 90% 50%;
 }
 
 @layer base {
