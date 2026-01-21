@@ -9,6 +9,7 @@ import path from "path";
 import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
 import { handleBotUpdate, setWebhook, startPolling, sendChargedCardNotification } from "./services/telegramBot";
+import { setWss } from "./services/wsManager";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
 
@@ -34,6 +35,7 @@ export async function registerRoutes(
 
   // === WebSocket Setup with User Scoping ===
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  setWss(wss);
 
   // Broadcast to all clients (for global events only)
   const broadcastAll = (data: any) => {

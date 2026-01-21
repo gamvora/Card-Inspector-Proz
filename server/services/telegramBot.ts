@@ -1,5 +1,6 @@
 import { storage } from '../storage';
-import { ADMIN_TELEGRAM_ID } from '@shared/schema';
+import { ADMIN_TELEGRAM_ID, WS_EVENTS } from '@shared/schema';
+import { broadcastToTelegramId } from './wsManager';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || ADMIN_TELEGRAM_ID;
@@ -109,6 +110,11 @@ The user will be notified of the credit change.
         `${amount > 0 ? 'Added' : 'Removed'} by admin`,
         senderId
       );
+
+      broadcastToTelegramId(targetUserId, { 
+        type: WS_EVENTS.CREDITS_UPDATE, 
+        payload: { credits: updatedUser.credits } 
+      });
 
       await sendMessage(chat.id, `
 <b>Credits Updated</b>

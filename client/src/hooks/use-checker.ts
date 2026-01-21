@@ -129,6 +129,45 @@ export function useCheckerSocket() {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
+  const refreshCredits = async () => {
+    try {
+      const token = getAuthToken();
+      const telegramId = getTelegramId();
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else if (telegramId) {
+        headers['x-telegram-id'] = telegramId;
+      }
+      const res = await fetch('/api/auth/me', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user?.credits !== undefined) {
+          setCredits(data.user.credits);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to refresh credits', e);
+    }
+  };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshCredits();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    const interval = setInterval(refreshCredits, 30000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
@@ -140,7 +179,7 @@ export function useCheckerSocket() {
 
       ws.onopen = () => {
         setIsConnected(true);
-        // Send auth token to identify user
+        refreshCredits();
         const token = getAuthToken();
         if (token) {
           ws.send(JSON.stringify({ type: 'auth', token }));
