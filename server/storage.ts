@@ -1,38 +1,62 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import {
+  settings,
+  results,
+  type Settings,
+  type InsertSettings,
+  type CheckResult,
+  insertSettingsSchema,
+} from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Settings
+  getSettings(): Promise<Settings | undefined>;
+  updateSettings(newSettings: InsertSettings): Promise<Settings>;
+
+  // Results
+  addResult(result: { card: string; status: string; message?: string }): Promise<CheckResult>;
+  getResults(limit?: number): Promise<CheckResult[]>;
+  clearResults(): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async getSettings(): Promise<Settings | undefined> {
+    const [config] = await db.select().from(settings).limit(1);
+    return config;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async updateSettings(newSettings: InsertSettings): Promise<Settings> {
+    const existing = await this.getSettings();
+    if (existing) {
+      const [updated] = await db
+        .update(settings)
+        .set({ ...newSettings, updatedAt: new Date() })
+        .where(eq(settings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(settings).values(newSettings).returning();
+      return created;
+    }
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async addResult(result: { card: string; status: string; message?: string }): Promise<CheckResult> {
+    const [saved] = await db.insert(results).values({
+      card: result.card,
+      status: result.status,
+      message: result.message || "",
+    }).returning();
+    return saved;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async getResults(limit = 100): Promise<CheckResult[]> {
+    return db.select().from(results).orderBy(desc(results.createdAt)).limit(limit);
+  }
+
+  async clearResults(): Promise<void> {
+    await db.delete(results);
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
