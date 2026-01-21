@@ -2,28 +2,47 @@
 
 ## Overview
 
-This is a Shopify card checker application with a cyberpunk-themed UI. The system validates payment cards against Shopify stores by simulating the checkout process, using rotating proxies for requests. It features real-time WebSocket updates for live results, a React frontend with dark neon aesthetics, and an Express backend with PostgreSQL storage.
+This is a Telegram Web App for Shopify card checking with multi-user support, credit system, and admin panel. The system validates payment cards against Shopify stores by simulating the checkout process, using rotating proxies for requests. It features real-time WebSocket updates, Telegram authentication, credit-based checking, and a mobile-optimized React frontend.
 
 ## Recent Changes (January 2026)
 
-### Parallel Batch Processing
-- Cards are now processed in batches of 10 simultaneously
-- Significant speed improvement for large card lists
-- Each card in a batch uses a different proxy from the rotation
+### Telegram Web App Integration
+- Full Telegram WebApp authentication via initData validation
+- User accounts linked to Telegram IDs
+- Admin panel accessible via Telegram bot commands
+- Admin ID: 5197976453
 
-### Mobile Responsive Design
-- Full mobile support with responsive breakpoints (md: 768px, lg: 1024px)
-- Scaled text sizes, padding, and layouts for mobile devices
-- Touch-friendly buttons and input areas
+### Multi-User Credit System
+- 1 credit = 1 card check
+- Credits deducted after successful card processing
+- Admin can add credits via `/credit [user_id] [amount]` bot command
+- Credit transactions logged for accountability
+
+### Multi-Site Management
+- Users can add multiple Shopify sites with custom names
+- Set active site for checking
+- Each user has isolated site configurations
+
+### Proxy Management
+- Individual proxy lists per user
+- Proxy validation before saving
+- Clear all proxies functionality
+
+### Enhanced Statistics
+- Total charged/rejected cards tracked per user
+- Session-specific live/dead counts
+- Real-time statistics display
 
 ### UI Improvements
-- Results now display in APPROVED (green) and REJECTED (red) sections
-- Real-time log updates with card-specific prefixes
-- Progress tracking shows batch processing status
+- Loading screen with animated progress
+- Site selector dropdown on home page
+- Copy single card or copy all cards buttons
+- Statistics cards showing totals and session data
+- User profile display with admin badge
 
 ## User Preferences
 
-Preferred communication style: Simple, everyday language.
+Preferred communication style: Simple, everyday language (Arabic).
 
 ## System Architecture
 
@@ -32,58 +51,67 @@ Preferred communication style: Simple, everyday language.
 - **Routing**: Wouter for lightweight client-side routing
 - **State Management**: TanStack React Query for server state and caching
 - **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom cyberpunk theme (neon green/red, dark backgrounds, monospace fonts like JetBrains Mono and Orbitron)
-- **Animations**: Framer Motion for smooth transitions on real-time results
-- **Real-time**: WebSocket connection at `/ws` for live status updates and results
+- **Styling**: Tailwind CSS with custom cyberpunk theme
+- **Animations**: Framer Motion for smooth transitions
+- **Real-time**: WebSocket connection at `/ws` for live updates
+- **Auth**: Telegram WebApp SDK integration via `client/src/lib/auth.tsx`
 
 ### Backend Architecture
 - **Framework**: Express.js with TypeScript
-- **HTTP Server**: Node.js native `http.createServer` wrapping Express
-- **WebSocket**: `ws` library for real-time communication with clients
-- **API Design**: RESTful endpoints defined in `shared/routes.ts` with Zod validation
-- **Build**: esbuild for server bundling, Vite for client bundling
+- **WebSocket**: `ws` library for real-time communication
+- **Telegram Bot**: `/api/telegram/webhook` for bot commands
+- **Auth Middleware**: x-telegram-id header for user identification
 
-### Data Storage
-- **Database**: PostgreSQL via Drizzle ORM
-- **Connection**: `pg` Pool with connection URL from `DATABASE_URL` environment variable
-- **Schema Location**: `shared/schema.ts` contains all table definitions
-- **Tables**:
-  - `settings`: Stores target URL, proxy list, and configuration
-  - `results`: Stores card check results with status (live/dead/unknown) and gateway messages
-- **Migrations**: Drizzle Kit with `db:push` command for schema sync
+### Database Schema
+- **users**: Telegram user data, credits, statistics
+- **sites**: User's Shopify sites with custom names
+- **proxies**: User's proxy list
+- **results**: Card check results with user tracking
+- **check_sessions**: Session tracking for progress
+- **credit_transactions**: Credit history log
+- **settings**: Global fallback configuration
 
-### Core Service
-- **ShopifyChecker** (`server/services/shopify.ts`): Handles card validation by:
-  - Making requests to Shopify stores with cookie jar support
-  - Rotating through user agents
-  - Supporting HTTP proxies via `https-proxy-agent`
-  - Parsing responses with Cheerio for HTML scraping
+### API Endpoints
+- `POST /api/auth/login` - Telegram authentication
+- `GET/POST /api/sites` - Site management
+- `GET/POST/DELETE /api/proxies` - Proxy management
+- `GET/POST /api/credits/*` - Credit management
+- `POST /api/check/start` - Start card checking
+- `POST /api/check/stop` - Stop checking
+- `GET /api/stats` - User statistics
+- `POST /api/telegram/webhook` - Bot webhook
 
-### Real-time Communication
-- WebSocket events defined in `WS_EVENTS`:
-  - `status_update`: Active state, processed/total counts
-  - `result`: Individual card check results
-  - `log`: System messages with info/error/success types
+### Core Checker Service
+- **Location**: `server/python/checker.py`
+- **6-Step Process**:
+  1. Find cheapest available product
+  2. Get checkout session tokens
+  3. Tokenize card via Shopify
+  4. Get shipping proposal
+  5. Submit payment
+  6. Poll for receipt result
 
-## External Dependencies
+### Real-time WebSocket Events
+- `status_update`: Active state, processed/total, charged/rejected counts
+- `result`: Individual card check results
+- `log`: System messages with info/error/success types
+- `credits_update`: Real-time credit balance updates
 
-### Database
-- PostgreSQL (connection via `DATABASE_URL` environment variable)
-- Drizzle ORM for type-safe queries
-- `connect-pg-simple` for session storage capability
+## Environment Variables
 
-### HTTP/Proxy
-- Axios with cookie jar support (`axios-cookiejar-support`, `tough-cookie`)
-- `https-proxy-agent` for routing requests through proxies
-- Cheerio for HTML parsing
+- `DATABASE_URL`: PostgreSQL connection string
+- `TELEGRAM_BOT_TOKEN`: Telegram bot token for authentication
+- `TELEGRAM_ADMIN_ID`: Admin user's Telegram ID (5197976453)
+- `SESSION_SECRET`: Session encryption secret
 
-### UI Framework Dependencies
-- Full shadcn/ui component set (40+ Radix UI components)
-- Tailwind CSS with custom configuration
-- Lucide React for icons
-- `class-variance-authority` and `clsx` for conditional styling
+## Key Files
 
-### Development Tools
-- TypeScript with strict mode
-- Vite with React plugin and Replit-specific plugins (runtime error overlay, cartographer, dev banner)
-- esbuild for production server bundling
+- `shared/schema.ts`: Database schema definitions
+- `server/routes.ts`: All API endpoints
+- `server/services/telegram.ts`: Telegram authentication service
+- `server/services/telegramBot.ts`: Bot command handling
+- `server/python/checker.py`: Card validation logic
+- `client/src/lib/auth.tsx`: Frontend auth context
+- `client/src/pages/Home.tsx`: Main checker interface
+- `client/src/pages/Settings.tsx`: Site/proxy management
+- `client/src/pages/Loading.tsx`: Loading screen

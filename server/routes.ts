@@ -1,22 +1,42 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { WS_EVENTS } from "@shared/schema";
+import { WS_EVENTS, ADMIN_TELEGRAM_ID } from "@shared/schema";
 import { spawn } from "child_process";
 import path from "path";
+import jwt from "jsonwebtoken";
+import { telegramService } from "./services/telegram";
+import { handleBotUpdate, setWebhook } from "./services/telegramBot";
+
+const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
+
+interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    telegramId: string;
+    isAdmin: boolean;
+    credits: number;
+  };
+}
+
+interface UserWebSocket extends WebSocket {
+  userId?: number;
+  telegramId?: string;
+  isAlive?: boolean;
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  // === WebSocket Setup ===
+  // === WebSocket Setup with User Scoping ===
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-  // Broadcast helper
-  const broadcast = (data: any) => {
+  // Broadcast to all clients (for global events only)
+  const broadcastAll = (data: any) => {
     const payload = JSON.stringify(data);
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
@@ -25,25 +45,94 @@ export async function registerRoutes(
     });
   };
 
-  // === Job Management ===
-  let isRunning = false;
-  let shouldStop = false;
-  const activeProcesses: Set<ReturnType<typeof spawn>> = new Set();
+  // Broadcast to specific user only (for user-scoped events)
+  const broadcastToUser = (userId: number | string, data: any) => {
+    const payload = JSON.stringify(data);
+    wss.clients.forEach((client) => {
+      const userClient = client as UserWebSocket;
+      if (userClient.readyState === WebSocket.OPEN) {
+        if (userClient.userId === userId || userClient.telegramId === String(userId)) {
+          userClient.send(payload);
+        }
+      }
+    });
+  };
 
-  // Kill all active Python processes
-  const killAllProcesses = () => {
-    activeProcesses.forEach(proc => {
+  // Handle WebSocket connections with authentication
+  wss.on('connection', (ws: UserWebSocket, req) => {
+    ws.isAlive = true;
+    
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
+
+    // Listen for auth message with token
+    ws.on('message', async (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.type === 'auth' && data.token) {
+          const decoded = jwt.verify(data.token, JWT_SECRET) as { telegramId: string; userId: number };
+          ws.telegramId = decoded.telegramId;
+          ws.userId = decoded.userId;
+          ws.send(JSON.stringify({ type: 'auth_success' }));
+        }
+      } catch (e) {
+        // Ignore invalid messages
+      }
+    });
+  });
+
+  // Ping interval to keep connections alive
+  setInterval(() => {
+    wss.clients.forEach((ws) => {
+      const client = ws as UserWebSocket;
+      if (!client.isAlive) {
+        return client.terminate();
+      }
+      client.isAlive = false;
+      client.ping();
+    });
+  }, 30000);
+
+  // === Job Management (Per-User) ===
+  interface UserJob {
+    isRunning: boolean;
+    shouldStop: boolean;
+    sessionId: string | null;
+    processes: Set<ReturnType<typeof spawn>>;
+  }
+  
+  const userJobs = new Map<number, UserJob>();
+  
+  const getUserJob = (userId: number): UserJob => {
+    if (!userJobs.has(userId)) {
+      userJobs.set(userId, {
+        isRunning: false,
+        shouldStop: false,
+        sessionId: null,
+        processes: new Set(),
+      });
+    }
+    return userJobs.get(userId)!;
+  };
+
+  const killUserProcesses = (userId: number) => {
+    const job = getUserJob(userId);
+    job.processes.forEach(proc => {
       try {
         proc.kill('SIGTERM');
       } catch (e) {}
     });
-    activeProcesses.clear();
+    job.processes.clear();
+    job.isRunning = false;
+    job.shouldStop = true;
   };
 
-  // Function to check a single card using Python script
-  const checkCardWithPython = (card: string, siteUrl: string, proxy: string, onLog: (msg: string) => void): Promise<{status: string, message: string}> => {
+  const checkCardWithPython = (card: string, siteUrl: string, proxy: string, userId: number, onLog: (msg: string) => void): Promise<{status: string, message: string}> => {
     return new Promise((resolve) => {
-      if (shouldStop) {
+      const job = getUserJob(userId);
+      
+      if (job.shouldStop) {
         resolve({ status: 'error', message: '[STOPPED] Cancelled by user' });
         return;
       }
@@ -51,10 +140,10 @@ export async function registerRoutes(
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
       
       const pythonProcess = spawn('python', [scriptPath, card, siteUrl, proxy], {
-        timeout: 120000 // 2 minute timeout per card
+        timeout: 120000
       });
       
-      activeProcesses.add(pythonProcess);
+      job.processes.add(pythonProcess);
       
       let stdout = '';
       
@@ -62,7 +151,6 @@ export async function registerRoutes(
         stdout += data.toString();
       });
       
-      // Stream logs from stderr in real-time
       pythonProcess.stderr.on('data', (data) => {
         const logLines = data.toString().trim().split('\n');
         for (const line of logLines) {
@@ -73,9 +161,9 @@ export async function registerRoutes(
       });
       
       pythonProcess.on('close', (code) => {
-        activeProcesses.delete(pythonProcess);
+        job.processes.delete(pythonProcess);
         
-        if (shouldStop) {
+        if (job.shouldStop) {
           resolve({ status: 'error', message: '[STOPPED] Cancelled by user' });
           return;
         }
@@ -94,40 +182,40 @@ export async function registerRoutes(
       });
       
       pythonProcess.on('error', (err) => {
-        activeProcesses.delete(pythonProcess);
+        job.processes.delete(pythonProcess);
         resolve({ status: 'error', message: `[ERROR] Process: ${err.message}` });
       });
     });
   };
 
-  const BATCH_SIZE = 10; // Process 10 cards in parallel
+  const BATCH_SIZE = 10;
 
-  const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string) => {
-    isRunning = true;
-    shouldStop = false;
+  const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string, userId: number, sessionId: string) => {
+    const job = getUserJob(userId);
+    job.isRunning = true;
+    job.shouldStop = false;
+    job.sessionId = sessionId;
 
-    // Parse proxies - get list for rotation
     const proxies = proxyListStr.split('\n')
       .map(p => p.trim())
       .filter(p => p.length > 0);
 
     const total = cards.length;
     let processedCount = 0;
+    let chargedCount = 0;
+    let rejectedCount = 0;
 
-    // Broadcast ACTIVE status immediately
-    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: total } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: `${total} cards | ${proxies.length} proxies | Batch: ${BATCH_SIZE}`, type: 'info' } });
+    broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: total } });
+    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
+    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${total} cards | ${proxies.length} proxies | Batch: ${BATCH_SIZE}`, type: 'info' } });
 
-    // Filter valid cards
     const validCards = cards
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
-    // Process cards in batches of BATCH_SIZE
     for (let i = 0; i < validCards.length; i += BATCH_SIZE) {
-      if (shouldStop) {
-        broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Stopped by user', type: 'info' } });
+      if (job.shouldStop) {
+        broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: 'Stopped by user', type: 'info' } });
         break;
       }
 
@@ -135,80 +223,384 @@ export async function registerRoutes(
       const batchNum = Math.floor(i / BATCH_SIZE) + 1;
       const totalBatches = Math.ceil(validCards.length / BATCH_SIZE);
       
-      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches} - Processing ${batch.length} cards...`, type: 'info' } });
+      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches} - Processing ${batch.length} cards...`, type: 'info' } });
 
-      // Process batch in parallel
       const batchPromises = batch.map(async (cardStr, idx) => {
         const proxyIndex = (i + idx) % (proxies.length || 1);
         const currentProxy = proxies[proxyIndex] || '';
 
         try {
           const onLog = (msg: string) => {
-            if (shouldStop) return; // Don't log if stopped
+            if (job.shouldStop) return;
             const cardPrefix = cardStr.substring(0, 6);
-            broadcast({ type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
           };
           
-          const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, onLog);
+          const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
           
-          // Skip saving cancelled/stopped cards
-          if (shouldStop || result.message?.includes('[STOPPED]')) {
-            return { success: false, stopped: true };
+          if (job.shouldStop || result.message?.includes('[STOPPED]')) {
+            return { success: false, stopped: true, charged: false };
           }
           
           let status = 'unknown';
-          if (result.status === 'live') status = 'live';
-          else if (result.status === 'dead' || result.status === 'error') status = 'dead';
-          else status = 'unknown';
+          let isCharged = false;
+          
+          if (result.status === 'live') {
+            status = 'live';
+            isCharged = true;
+          } else if (result.status === 'dead' || result.status === 'error') {
+            status = 'dead';
+          }
 
           const saved = await storage.addResult({
             card: cardStr,
             status: status,
-            message: result.message || 'No message'
+            message: result.message || 'No message',
+            userId: userId,
+            sessionId: sessionId,
           });
 
-          broadcast({ type: WS_EVENTS.RESULT, payload: saved });
+          broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
 
           if (status === 'live') {
-            broadcast({ type: WS_EVENTS.LOG, payload: { message: `LIVE: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'success' } });
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `LIVE: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'success' } });
           } else {
-            broadcast({ type: WS_EVENTS.LOG, payload: { message: `DEAD: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `DEAD: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
           }
 
-          return { success: true, stopped: false };
+          return { success: true, stopped: false, charged: isCharged };
         } catch (e: any) {
-          if (!shouldStop) {
-            broadcast({ type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
+          if (!job.shouldStop) {
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
           }
-          return { success: false, stopped: shouldStop };
+          return { success: false, stopped: job.shouldStop, charged: false };
         }
       });
 
-      // Wait for all cards in batch to complete
       const batchResults = await Promise.all(batchPromises);
       
-      // Only count cards that were actually processed (not stopped)
       const actuallyProcessed = batchResults.filter(r => !r.stopped).length;
-      processedCount += actuallyProcessed;
+      const batchCharged = batchResults.filter(r => r.charged).length;
+      const batchRejected = actuallyProcessed - batchCharged;
       
-      if (!shouldStop) {
-        broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: processedCount, total: validCards.length } });
+      processedCount += actuallyProcessed;
+      chargedCount += batchCharged;
+      rejectedCount += batchRejected;
+
+      // Deduct credits for processed cards
+      if (actuallyProcessed > 0) {
+        const user = await storage.getUserByTelegramId(userId.toString());
+        if (user) {
+          await storage.updateUserCredits(user.telegramId, -actuallyProcessed);
+          broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: user.credits - actuallyProcessed } });
+        }
+      }
+      
+      if (!job.shouldStop) {
+        broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
+          active: true, 
+          processed: processedCount, 
+          total: validCards.length,
+          charged: chargedCount,
+          rejected: rejectedCount
+        }});
       }
     }
 
-    isRunning = false;
+    // Update user stats
+    const user = await storage.getUserByTelegramId(userId.toString());
+    if (user) {
+      await storage.updateUserStats(user.telegramId, chargedCount, rejectedCount);
+    }
+
+    job.isRunning = false;
+    job.sessionId = null;
     
-    if (shouldStop) {
-      // Already handled in stop endpoint
-    } else {
-      broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: processedCount, total: validCards.length } });
-      broadcast({ type: WS_EVENTS.LOG, payload: { message: `Finished! ${processedCount}/${validCards.length} processed.`, type: 'info' } });
+    if (!job.shouldStop) {
+      broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
+        active: false, 
+        processed: processedCount, 
+        total: validCards.length,
+        charged: chargedCount,
+        rejected: rejectedCount
+      }});
+      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Finished! ${processedCount}/${validCards.length} processed. Charged: ${chargedCount} | Rejected: ${rejectedCount}`, type: 'info' } });
     }
   };
 
-  // === API Routes ===
+  // === Auth Middleware with JWT Validation ===
+  const authMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    // Try JWT token first (from Authorization header)
+    const authHeader = req.headers['authorization'] as string;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, JWT_SECRET) as { telegramId: string; userId: number };
+        const user = await storage.getUserByTelegramId(decoded.telegramId);
+        if (user) {
+          req.user = {
+            id: user.id,
+            telegramId: user.telegramId,
+            isAdmin: user.isAdmin,
+            credits: user.credits,
+          };
+          return next();
+        }
+      } catch (e) {
+        // Token invalid, try fallback in dev mode only
+      }
+    }
+    
+    // Fallback to x-telegram-id ONLY in development mode
+    if (process.env.NODE_ENV === 'development') {
+      const telegramId = req.headers['x-telegram-id'] as string;
+      if (telegramId) {
+        const user = await storage.getUserByTelegramId(telegramId);
+        if (user) {
+          req.user = {
+            id: user.id,
+            telegramId: user.telegramId,
+            isAdmin: user.isAdmin,
+            credits: user.credits,
+          };
+          return next();
+        }
+      }
+    }
+    
+    return res.status(401).json({ error: 'Unauthorized - valid token required' });
+  };
 
-  app.get(api.settings.get.path, async (req, res) => {
+  // === Auth Routes ===
+  app.post(api.auth.login.path, async (req, res) => {
+    try {
+      const { initData } = req.body;
+      const result = await telegramService.authenticateUser(initData);
+      
+      if (!result.success) {
+        return res.status(401).json({ error: result.error });
+      }
+      
+      // Generate JWT token for secure auth
+      const token = jwt.sign(
+        { telegramId: result.user.telegramId, userId: result.user.id },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      
+      res.json({ user: result.user, token });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Dev login for testing without Telegram
+  app.post('/api/auth/dev-login', async (req, res) => {
+    const devTelegramId = 'dev-user-123';
+    let user = await storage.getUserByTelegramId(devTelegramId);
+    
+    if (!user) {
+      user = await storage.createUser({
+        telegramId: devTelegramId,
+        username: 'dev_tester',
+        firstName: 'Dev',
+        lastName: 'Tester',
+        credits: 100,
+        totalCharged: 0,
+        totalRejected: 0,
+        isAdmin: false,
+      });
+    }
+    
+    // Generate JWT token for dev user
+    const token = jwt.sign(
+      { telegramId: user.telegramId, userId: user.id },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    res.json({ user, token });
+  });
+
+  app.get(api.auth.me.path, authMiddleware, async (req: AuthRequest, res) => {
+    const user = await storage.getUserByTelegramId(req.user!.telegramId);
+    res.json({ user });
+  });
+
+  // === Sites Routes ===
+  app.get(api.sites.list.path, authMiddleware, async (req: AuthRequest, res) => {
+    const sites = await storage.getUserSites(req.user!.id);
+    res.json(sites);
+  });
+
+  app.post(api.sites.add.path, authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, url } = req.body;
+      const site = await storage.addSite({
+        userId: req.user!.id,
+        name,
+        url,
+        isActive: false,
+      });
+      res.json(site);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.put('/api/sites/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      // Verify ownership
+      const userSites = await storage.getUserSites(req.user!.id);
+      const ownsSite = userSites.some(s => s.id === id);
+      if (!ownsSite) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      const { name, url } = req.body;
+      const site = await storage.updateSite(id, { name, url });
+      res.json(site);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/sites/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      // Verify ownership
+      const userSites = await storage.getUserSites(req.user!.id);
+      const ownsSite = userSites.some(s => s.id === id);
+      if (!ownsSite) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      await storage.deleteSite(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/sites/:id/activate', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const siteId = parseInt(req.params.id as string);
+      // Verify ownership
+      const userSites = await storage.getUserSites(req.user!.id);
+      const ownsSite = userSites.some(s => s.id === siteId);
+      if (!ownsSite) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      await storage.setActiveSite(req.user!.id, siteId);
+      const site = await storage.getActiveSite(req.user!.id);
+      res.json(site);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // === Proxies Routes ===
+  app.get(api.proxies.list.path, authMiddleware, async (req: AuthRequest, res) => {
+    const proxies = await storage.getUserProxies(req.user!.id);
+    res.json(proxies);
+  });
+
+  app.post(api.proxies.add.path, authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { proxies: proxyList } = req.body;
+      const added = [];
+      for (const proxy of proxyList) {
+        if (proxy.trim()) {
+          const p = await storage.addProxy({
+            userId: req.user!.id,
+            proxy: proxy.trim(),
+            isValid: true,
+          });
+          added.push(p);
+        }
+      }
+      res.json(added);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.post(api.proxies.validate.path, async (req, res) => {
+    try {
+      const { proxy } = req.body;
+      // Simple validation - check format
+      const parts = proxy.split(':');
+      const isValid = parts.length >= 2;
+      res.json({ valid: isValid, proxy });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message, valid: false });
+    }
+  });
+
+  app.delete('/api/proxies/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      // Verify ownership
+      const userProxies = await storage.getUserProxies(req.user!.id);
+      const ownsProxy = userProxies.some(p => p.id === id);
+      if (!ownsProxy) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      await storage.deleteProxy(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete(api.proxies.clear.path, authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteAllUserProxies(req.user!.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // === Credits Routes ===
+  app.get(api.credits.balance.path, authMiddleware, async (req: AuthRequest, res) => {
+    const user = await storage.getUserByTelegramId(req.user!.telegramId);
+    res.json({ credits: user?.credits || 0 });
+  });
+
+  app.post(api.credits.add.path, authMiddleware, async (req: AuthRequest, res) => {
+    if (!req.user!.isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    try {
+      const { userId, amount } = req.body;
+      const updatedUser = await storage.updateUserCredits(userId, amount);
+      if (updatedUser) {
+        await storage.addCreditTransaction(
+          updatedUser.id,
+          amount,
+          amount > 0 ? 'admin_add' : 'admin_remove',
+          'Added by admin',
+          req.user!.telegramId
+        );
+      }
+      res.json({ user: updatedUser });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get(api.credits.history.path, authMiddleware, async (req: AuthRequest, res) => {
+    const transactions = await storage.getCreditTransactions(req.user!.id);
+    res.json(transactions);
+  });
+
+  // === Settings Routes (Admin-only for global settings) ===
+  app.get(api.settings.get.path, authMiddleware, async (req: AuthRequest, res) => {
+    // Only admins can access global settings
+    if (!req.user!.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
     const config = await storage.getSettings();
     if (!config) {
       return res.json({ targetUrl: '', proxyList: '', proxyEnabled: true });
@@ -216,7 +608,11 @@ export async function registerRoutes(
     res.json(config);
   });
 
-  app.post(api.settings.update.path, async (req, res) => {
+  app.post(api.settings.update.path, authMiddleware, async (req: AuthRequest, res) => {
+    // Only admins can modify global settings
+    if (!req.user!.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
     try {
       const input = api.settings.update.input.parse(req.body);
       const updated = await storage.updateSettings(input);
@@ -226,44 +622,103 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.check.start.path, async (req, res) => {
-    if (isRunning) return res.status(400).json({ message: 'Job already running' });
+  // === Check Routes ===
+  app.post(api.check.start.path, authMiddleware, async (req: AuthRequest, res) => {
+    const job = getUserJob(req.user!.id);
+    if (job.isRunning) return res.status(400).json({ message: 'Job already running' });
     
-    const { cards } = req.body;
-    const settings = await storage.getSettings();
+    const { cards, siteId } = req.body;
+    const user = await storage.getUserByTelegramId(req.user!.telegramId);
     
-    if (!settings || !settings.targetUrl) {
-      return res.status(400).json({ message: 'Target URL not configured' });
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
     }
 
-    // Clear all previous results before starting new check
-    await storage.clearResults();
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: 'Cleared previous results', type: 'info' } });
+    // Check credits
+    if (user.credits < cards.length && !user.isAdmin) {
+      return res.status(400).json({ message: `Insufficient credits. You have ${user.credits} credits but need ${cards.length}` });
+    }
 
-    // Start background process (don't await)
-    processQueue(cards, settings.targetUrl, settings.proxyList || '');
+    // Get target URL from active site or fallback to settings
+    let targetUrl = '';
+    let proxyList = '';
+
+    if (siteId) {
+      const sites = await storage.getUserSites(user.id);
+      const site = sites.find(s => s.id === siteId);
+      if (site) targetUrl = site.url;
+    }
+
+    if (!targetUrl) {
+      const activeSite = await storage.getActiveSite(user.id);
+      if (activeSite) {
+        targetUrl = activeSite.url;
+      } else {
+        const settings = await storage.getSettings();
+        targetUrl = settings?.targetUrl || '';
+      }
+    }
+
+    if (!targetUrl) {
+      return res.status(400).json({ message: 'No target site configured. Please add a site in Settings.' });
+    }
+
+    // Get user proxies
+    const userProxies = await storage.getUserProxies(user.id);
+    proxyList = userProxies.map(p => p.proxy).join('\n');
+
+    // Clear previous results
+    await storage.clearResults(user.id);
+    broadcastToUser(user.id, { type: WS_EVENTS.LOG, payload: { message: 'Cleared previous results', type: 'info' } });
+
+    const sessionId = `${user.id}-${Date.now()}`;
+
+    // Start background process
+    processQueue(cards, targetUrl, proxyList, user.id, sessionId);
     
-    res.json({ message: 'Job started', jobId: '1' });
+    res.json({ message: 'Job started', jobId: sessionId });
   });
 
-  app.post(api.check.stop.path, async (req, res) => {
-    shouldStop = true;
-    killAllProcesses();
-    isRunning = false;
-    broadcast({ type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: 0, total: 0 } });
-    broadcast({ type: WS_EVENTS.LOG, payload: { message: 'STOPPED - All processes killed', type: 'error' } });
+  app.post(api.check.stop.path, authMiddleware, async (req: AuthRequest, res) => {
+    const userId = req.user!.id;
+    killUserProcesses(userId);
+    broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: false, processed: 0, total: 0 } });
+    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: 'STOPPED - All processes killed', type: 'error' } });
     res.json({ message: 'Stopped' });
   });
 
-  app.post(api.check.clear.path, async (req, res) => {
-    await storage.clearResults();
+  app.post(api.check.clear.path, authMiddleware, async (req: AuthRequest, res) => {
+    await storage.clearResults(req.user!.id);
     res.json({ message: 'Cleared' });
   });
   
-  // Results endpoint to load initial state
-  app.get('/api/results', async (req, res) => {
-    const data = await storage.getResults(200);
+  app.get('/api/results', authMiddleware, async (req: AuthRequest, res) => {
+    const data = await storage.getResults(200, req.user!.id);
     res.json(data);
+  });
+
+  // === Telegram Webhook ===
+  app.post(api.telegram.webhook.path, async (req, res) => {
+    try {
+      await handleBotUpdate(req.body);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('Webhook error:', e);
+      res.status(500).json({ error: 'Webhook error' });
+    }
+  });
+
+  // === Stats Route ===
+  app.get('/api/stats', authMiddleware, async (req: AuthRequest, res) => {
+    const user = await storage.getUserByTelegramId(req.user!.telegramId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({
+      totalCharged: user.totalCharged,
+      totalRejected: user.totalRejected,
+      credits: user.credits,
+    });
   });
 
   return httpServer;

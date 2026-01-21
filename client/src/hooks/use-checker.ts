@@ -3,6 +3,7 @@ import { api, buildUrl } from "@shared/routes";
 import { type InsertSettings, type CheckResult } from "@shared/schema";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { authFetch, getAuthToken, getTelegramId } from "@/lib/auth";
 
 // === SETTINGS HOOKS ===
 export function useSettings() {
@@ -42,23 +43,37 @@ export function useUpdateSettings() {
 }
 
 // === CHECKER ACTIONS ===
+interface StartCheckParams {
+  cards: string[];
+  siteId?: number;
+}
+
 export function useStartCheck() {
   const { toast } = useToast();
   return useMutation({
-    mutationFn: async (cards: string[]) => {
-      const res = await fetch(api.check.start.path, {
+    mutationFn: async ({ cards, siteId }: StartCheckParams) => {
+      const res = await authFetch(api.check.start.path, {
         method: api.check.start.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cards }),
+        body: JSON.stringify({ cards, siteId }),
       });
-      if (!res.ok) throw new Error("Failed to start check");
-      return api.check.start.responses[200].parse(await res.json());
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to start check");
+      }
+      return res.json();
     },
     onSuccess: () => {
       toast({
         title: "Sequence Initiated",
         description: "Card checking process started.",
         className: "border-primary text-primary font-mono",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
@@ -68,7 +83,7 @@ export function useStopCheck() {
   const { toast } = useToast();
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch(api.check.stop.path, {
+      const res = await authFetch(api.check.stop.path, {
         method: api.check.stop.method,
       });
       if (!res.ok) throw new Error("Failed to stop check");
@@ -88,7 +103,7 @@ export function useStopCheck() {
 export function useClearResults() {
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch(api.check.clear.path, {
+      const res = await authFetch(api.check.clear.path, {
         method: api.check.clear.method,
       });
       if (!res.ok) throw new Error("Failed to clear results");
@@ -97,15 +112,24 @@ export function useClearResults() {
   });
 }
 
+interface Stats {
+  active: boolean;
+  processed: number;
+  total: number;
+  charged?: number;
+  rejected?: number;
+}
+
 // === WEBSOCKET HOOK ===
 export function useCheckerSocket() {
   const [results, setResults] = useState<CheckResult[]>([]);
-  const [stats, setStats] = useState({ active: false, processed: 0, total: 0 });
+  const [stats, setStats] = useState<Stats>({ active: false, processed: 0, total: 0, charged: 0, rejected: 0 });
   const [logs, setLogs] = useState<{ message: string; type: string }[]>([]);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Determine protocol (ws or wss) based on current window location
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
     const wsUrl = `${protocol}//${host}/ws`;
@@ -114,16 +138,29 @@ export function useCheckerSocket() {
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
+      ws.onopen = () => {
+        setIsConnected(true);
+        // Send auth token to identify user
+        const token = getAuthToken();
+        if (token) {
+          ws.send(JSON.stringify({ type: 'auth', token }));
+        }
+      };
+
       ws.onmessage = (event) => {
         try {
           const { type, payload } = JSON.parse(event.data);
           
-          if (type === 'result') {
+          if (type === 'auth_success') {
+            console.log('WebSocket authenticated');
+          } else if (type === 'result') {
             setResults((prev) => [payload, ...prev]);
           } else if (type === 'status_update') {
             setStats(payload);
           } else if (type === 'log') {
-            setLogs((prev) => [payload, ...prev].slice(0, 50)); // Keep last 50 logs
+            setLogs((prev) => [payload, ...prev].slice(0, 50));
+          } else if (type === 'credits_update') {
+            setCredits(payload.credits);
           }
         } catch (e) {
           console.error("Failed to parse WS message", e);
@@ -131,7 +168,7 @@ export function useCheckerSocket() {
       };
 
       ws.onclose = () => {
-        // Simple reconnect logic
+        setIsConnected(false);
         setTimeout(connect, 3000);
       };
     };
@@ -148,8 +185,8 @@ export function useCheckerSocket() {
   const clearLocalResults = () => {
     setResults([]);
     setLogs([]);
-    setStats(prev => ({ ...prev, processed: 0, total: 0 }));
+    setStats(prev => ({ ...prev, processed: 0, total: 0, charged: 0, rejected: 0 }));
   };
 
-  return { results, stats, logs, clearLocalResults };
+  return { results, stats, logs, credits, clearLocalResults, isConnected };
 }
