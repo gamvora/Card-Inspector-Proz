@@ -6,9 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { authFetch } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 import { 
   Globe, 
   Plus, 
@@ -21,6 +23,12 @@ import {
   ArrowLeft,
   Radio,
   ShieldCheck,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  CreditCard,
+  Coins,
+  User,
 } from 'lucide-react';
 import { Link } from 'wouter';
 
@@ -39,10 +47,12 @@ interface Proxy {
 
 export default function Settings() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteUrl, setNewSiteUrl] = useState('');
   const [newProxies, setNewProxies] = useState('');
   const [validatingProxy, setValidatingProxy] = useState<string | null>(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const { data: sites = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -56,6 +66,15 @@ export default function Settings() {
     queryKey: ['/api/proxies'],
     queryFn: async () => {
       const res = await authFetch('/api/proxies');
+      return res.json();
+    },
+  });
+
+  const { data: userStats } = useQuery({
+    queryKey: ['/api/stats'],
+    queryFn: async () => {
+      const res = await authFetch('/api/stats');
+      if (!res.ok) return null;
       return res.json();
     },
   });
@@ -131,24 +150,6 @@ export default function Settings() {
     },
   });
 
-  const validateProxy = async (proxy: string) => {
-    setValidatingProxy(proxy);
-    try {
-      const res = await authFetch('/api/proxies/validate', {
-        method: 'POST',
-        body: JSON.stringify({ proxy }),
-      });
-      const data = await res.json();
-      toast({
-        title: data.valid ? 'Proxy is valid' : 'Proxy is invalid',
-        variant: data.valid ? 'default' : 'destructive',
-      });
-    } catch {
-      toast({ title: 'Validation failed', variant: 'destructive' });
-    }
-    setValidatingProxy(null);
-  };
-
   const handleAddSite = () => {
     if (!newSiteName.trim() || !newSiteUrl.trim()) {
       toast({ title: 'Please fill in all fields', variant: 'destructive' });
@@ -166,48 +167,134 @@ export default function Settings() {
     addProxiesMutation.mutate(proxyList);
   };
 
-  return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center gap-4 mb-6">
-          <Link href="/">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold font-orbitron text-foreground">Settings</h1>
-            <p className="text-muted-foreground text-sm">Manage sites and proxies</p>
-          </div>
-        </div>
+  const totalChecked = (userStats?.totalCharged || 0) + (userStats?.totalRejected || 0);
+  const successRate = totalChecked > 0 ? ((userStats?.totalCharged || 0) / totalChecked * 100).toFixed(1) : '0.0';
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background to-background/95">
+      <header className="border-b border-border/30 bg-card/50 backdrop-blur-xl sticky top-0 z-50">
+        <div className="px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/">
+              <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-back">
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            </Link>
+            <h1 className="text-lg font-bold">Settings</h1>
+          </div>
+          
+          <Dialog open={showAnalytics} onOpenChange={setShowAnalytics}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="rounded-full" data-testid="button-analytics">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Analytics
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-sm mx-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-primary" />
+                  Your Statistics
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
+                    <TrendingUp className="w-6 h-6 text-green-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-green-500" data-testid="stat-total-charged">
+                      {userStats?.totalCharged || 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Total Approved</p>
+                  </div>
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
+                    <TrendingDown className="w-6 h-6 text-red-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-red-500" data-testid="stat-total-declined">
+                      {userStats?.totalRejected || 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Total Declined</p>
+                  </div>
+                </div>
+                
+                <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Total Checked</span>
+                    </div>
+                    <span className="font-mono font-bold">{totalChecked}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Success Rate</span>
+                    </div>
+                    <span className="font-mono font-bold text-primary">{successRate}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Credits Balance</span>
+                    </div>
+                    <span className="font-mono font-bold text-primary">{user?.credits || 0}</span>
+                  </div>
+                </div>
+
+                {user && (
+                  <div className="bg-card border border-border/50 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                        <User className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{user.firstName} {user.lastName}</p>
+                        <p className="text-xs text-muted-foreground">@{user.username || user.telegramId}</p>
+                      </div>
+                      {user.isAdmin && (
+                        <Badge className="bg-primary/20 text-primary border-primary/30">
+                          Admin
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </header>
+
+      <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
+        
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Globe className="w-5 h-5 text-primary" />
               Target Sites
             </CardTitle>
-            <CardDescription>
-              Add Shopify sites for card checking. Set one as active.
+            <CardDescription className="text-xs">
+              Add Shopify checkout URLs for validation
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-2">
               <Input
-                placeholder="Site name (e.g., Store 1)"
+                placeholder="Site name"
                 value={newSiteName}
                 onChange={(e) => setNewSiteName(e.target.value)}
+                className="h-10"
                 data-testid="input-site-name"
               />
               <Input
-                placeholder="https://example.com"
+                placeholder="https://store.myshopify.com"
                 value={newSiteUrl}
                 onChange={(e) => setNewSiteUrl(e.target.value)}
+                className="h-10"
                 data-testid="input-site-url"
               />
               <Button 
                 onClick={handleAddSite}
                 disabled={addSiteMutation.isPending}
+                className="w-full"
                 data-testid="button-add-site"
               >
                 {addSiteMutation.isPending ? (
@@ -221,10 +308,10 @@ export default function Settings() {
 
             {sitesLoading ? (
               <div className="flex justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             ) : sites.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">No sites added yet</p>
+              <p className="text-center text-muted-foreground text-sm py-4">No sites added</p>
             ) : (
               <div className="space-y-2">
                 <AnimatePresence>
@@ -234,34 +321,26 @@ export default function Settings() {
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -10 }}
-                      className={`flex items-center justify-between p-3 rounded-lg border ${
-                        site.isActive ? 'border-primary bg-primary/5' : 'border-border'
+                      className={`flex items-center justify-between p-3 rounded-xl border ${
+                        site.isActive ? 'border-primary/50 bg-primary/5' : 'border-border/50 bg-muted/30'
                       }`}
                       data-testid={`site-item-${site.id}`}
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {site.isActive && (
-                          <Radio className="w-4 h-4 text-primary flex-shrink-0" />
-                        )}
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {site.isActive && <Radio className="w-4 h-4 text-primary flex-shrink-0" />}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium truncate">{site.name}</span>
-                            {site.isActive && (
-                              <Badge variant="outline" className="text-xs text-primary border-primary">
-                                Active
-                              </Badge>
-                            )}
-                          </div>
+                          <p className="font-medium text-sm truncate">{site.name}</p>
                           <p className="text-xs text-muted-foreground truncate">{site.url}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         {!site.isActive && (
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
                             onClick={() => activateSiteMutation.mutate(site.id)}
                             disabled={activateSiteMutation.isPending}
+                            className="h-8 w-8"
                             data-testid={`button-activate-site-${site.id}`}
                           >
                             <CheckCircle className="w-4 h-4" />
@@ -269,9 +348,9 @@ export default function Settings() {
                         )}
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           onClick={() => deleteSiteMutation.mutate(site.id)}
-                          className="text-destructive hover:text-destructive"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
                           disabled={deleteSiteMutation.isPending}
                           data-testid={`button-delete-site-${site.id}`}
                         >
@@ -286,22 +365,22 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Server className="w-5 h-5 text-primary" />
               Proxy List
             </CardTitle>
-            <CardDescription>
-              Add rotating proxies. Format: host:port:user:pass or host:port
+            <CardDescription className="text-xs">
+              Format: host:port or host:port:user:pass
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Textarea
-              placeholder="192.168.1.1:8080:user:pass&#10;proxy.example.com:3128"
+              placeholder="192.168.1.1:8080&#10;proxy.com:3128:user:pass"
               value={newProxies}
               onChange={(e) => setNewProxies(e.target.value)}
-              rows={4}
+              rows={3}
               className="font-mono text-sm"
               data-testid="input-proxies"
             />
@@ -309,6 +388,7 @@ export default function Settings() {
               <Button 
                 onClick={handleAddProxies}
                 disabled={addProxiesMutation.isPending}
+                className="flex-1"
                 data-testid="button-add-proxies"
               >
                 {addProxiesMutation.isPending ? (
@@ -316,7 +396,7 @@ export default function Settings() {
                 ) : (
                   <Save className="w-4 h-4 mr-2" />
                 )}
-                Save Proxies
+                Save
               </Button>
               {proxies.length > 0 && (
                 <Button
@@ -326,59 +406,39 @@ export default function Settings() {
                   data-testid="button-clear-proxies"
                 >
                   <X className="w-4 h-4 mr-2" />
-                  Clear All
+                  Clear
                 </Button>
               )}
             </div>
 
             {proxiesLoading ? (
               <div className="flex justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             ) : proxies.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {proxies.length} proxies configured
-                  </span>
-                </div>
-                <div className="max-h-48 overflow-y-auto space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  {proxies.length} proxies configured
+                </p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
                   {proxies.map((proxy) => (
                     <div
                       key={proxy.id}
-                      className="flex items-center justify-between p-2 rounded bg-muted/50 text-sm font-mono"
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-xs font-mono"
                       data-testid={`proxy-item-${proxy.id}`}
                     >
                       <div className="flex items-center gap-2 truncate flex-1">
-                        {proxy.isValid ? (
-                          <ShieldCheck className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        ) : (
-                          <X className="w-4 h-4 text-destructive flex-shrink-0" />
-                        )}
+                        <ShieldCheck className="w-3 h-3 text-green-500 flex-shrink-0" />
                         <span className="truncate">{proxy.proxy}</span>
                       </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => validateProxy(proxy.proxy)}
-                          disabled={validatingProxy === proxy.proxy}
-                        >
-                          {validatingProxy === proxy.proxy ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <CheckCircle className="w-3 h-3" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteProxyMutation.mutate(proxy.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteProxyMutation.mutate(proxy.id)}
+                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -386,7 +446,8 @@ export default function Settings() {
             )}
           </CardContent>
         </Card>
-      </div>
+
+      </main>
     </div>
   );
 }

@@ -262,10 +262,13 @@ export async function registerRoutes(
 
           broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
 
-          if (status === 'live') {
-            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `LIVE: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'success' } });
-          } else {
-            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `DEAD: ${cardStr.substring(0, 6)}*** | ${result.message}`, type: 'error' } });
+          // Deduct 1 credit immediately for this card (every check costs 1 credit)
+          const currentUser = await storage.getUserByTelegramId(userId.toString());
+          if (currentUser && !currentUser.isAdmin) {
+            const updatedUser = await storage.updateUserCredits(currentUser.telegramId, -1);
+            if (updatedUser) {
+              broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: updatedUser.credits } });
+            }
           }
 
           return { success: true, stopped: false, charged: isCharged };
@@ -287,14 +290,6 @@ export async function registerRoutes(
       chargedCount += batchCharged;
       rejectedCount += batchRejected;
 
-      // Deduct credits for processed cards
-      if (actuallyProcessed > 0) {
-        const user = await storage.getUserByTelegramId(userId.toString());
-        if (user) {
-          await storage.updateUserCredits(user.telegramId, -actuallyProcessed);
-          broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: user.credits - actuallyProcessed } });
-        }
-      }
       
       if (!job.shouldStop) {
         broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 

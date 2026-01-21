@@ -32,51 +32,48 @@ export async function handleBotUpdate(update: TelegramUpdate): Promise<void> {
 
   const { text, from, chat } = update.message;
   const senderId = from.id.toString();
+  const isAdmin = senderId === ADMIN_ID;
 
   if (text.startsWith('/start')) {
     const webAppUrl = getWebAppUrl();
-    const isAdmin = senderId === ADMIN_ID;
     
     await sendMessageWithButton(chat.id, `
-<b>Welcome to NexusChecker!</b>
+<b>Welcome to NexusChecker</b>
 
-Hello <b>${from.first_name}</b>! 
+A professional card validation tool using Shopify checkout gateway.
 
-NexusChecker is a powerful card validation tool that helps you verify payment cards quickly and efficiently.
+<b>How It Works:</b>
+1. Open the app using the button below
+2. Add your target Shopify sites
+3. Configure proxies for rotation
+4. Paste cards and start checking
+5. 1 credit = 1 card check
 
-<b>Your Telegram ID:</b> <code>${from.id}</code>
-
-<b>How to Get Started:</b>
-1. Click the button below to open the app
-2. Your account will be automatically created
-3. Add credits to start checking cards
-4. Configure your target sites and proxies
-5. Start validating!
-
-<b>Available Commands:</b>
-/balance - Check your credit balance
+<b>Commands:</b>
+/balance - Check your credits
 /myid - Get your Telegram ID
 ${isAdmin ? `
 <b>Admin Commands:</b>
-/credit [user_id] [amount] - Add credits to a user
-/stats - View system statistics` : ''}
+/credit [id] [amount] - Add/remove credits
+/user [id] - View user details
+/broadcast [msg] - Send to all users` : ''}
 `, 'Open NexusChecker', webAppUrl);
     return;
   }
 
-  if (text.startsWith('/credit') && senderId === ADMIN_ID) {
+  if (text.startsWith('/credit') && isAdmin) {
     const parts = text.split(' ');
     if (parts.length < 3) {
       await sendMessage(chat.id, `
-<b>Credit Command Usage</b>
+<b>Credit Management</b>
 
-<code>/credit [user_id] [amount]</code>
+Usage: <code>/credit [user_id] [amount]</code>
 
-<b>Examples:</b>
-<code>/credit 123456789 100</code> - Add 100 credits
-<code>/credit 123456789 -50</code> - Remove 50 credits
+Examples:
+• <code>/credit 123456789 100</code> - Add 100 credits
+• <code>/credit 123456789 -50</code> - Remove 50 credits
 
-<b>Note:</b> If the user doesn't exist, a new account will be created.
+The user will be notified of the credit change.
       `);
       return;
     }
@@ -85,7 +82,7 @@ ${isAdmin ? `
     const amount = parseInt(parts[2]);
 
     if (isNaN(amount)) {
-      await sendMessage(chat.id, 'Please enter a valid number for the amount.');
+      await sendMessage(chat.id, 'Invalid amount. Please enter a number.');
       return;
     }
 
@@ -114,36 +111,73 @@ ${isAdmin ? `
       );
 
       await sendMessage(chat.id, `
-<b>Credits Updated Successfully!</b>
+<b>Credits Updated</b>
 
-<b>User ID:</b> <code>${targetUserId}</code>
-<b>Change:</b> ${amount > 0 ? '+' : ''}${amount} credits
-<b>New Balance:</b> ${updatedUser.credits} credits
+User: <code>${targetUserId}</code>
+Change: ${amount > 0 ? '+' : ''}${amount}
+New Balance: ${updatedUser.credits} credits
       `);
 
       if (targetUserId !== senderId) {
         await sendMessage(parseInt(targetUserId), `
-<b>Credits Added to Your Account!</b>
+<b>Credits ${amount > 0 ? 'Added' : 'Removed'}</b>
 
-<b>Amount:</b> ${amount > 0 ? '+' : ''}${amount} credits
-<b>Current Balance:</b> ${updatedUser.credits} credits
-
-Open NexusChecker to start using your credits!
+Amount: ${amount > 0 ? '+' : ''}${amount}
+Balance: ${updatedUser.credits} credits
         `);
       }
     } else {
-      await sendMessage(chat.id, 'Failed to update credits. Please try again.');
+      await sendMessage(chat.id, 'Failed to update credits.');
     }
     return;
   }
 
-  if (text.startsWith('/stats') && senderId === ADMIN_ID) {
-    await sendMessage(chat.id, 'Gathering system statistics...');
+  if (text.startsWith('/user') && isAdmin) {
+    const parts = text.split(' ');
+    if (parts.length < 2) {
+      await sendMessage(chat.id, 'Usage: <code>/user [telegram_id]</code>');
+      return;
+    }
+
+    const targetUserId = parts[1];
+    const targetUser = await storage.getUserByTelegramId(targetUserId);
+    
+    if (!targetUser) {
+      await sendMessage(chat.id, `User <code>${targetUserId}</code> not found.`);
+      return;
+    }
+
+    await sendMessage(chat.id, `
+<b>User Details</b>
+
+ID: <code>${targetUser.telegramId}</code>
+Name: ${targetUser.firstName || 'N/A'} ${targetUser.lastName || ''}
+Username: @${targetUser.username || 'N/A'}
+Credits: ${targetUser.credits}
+Approved: ${targetUser.totalCharged}
+Declined: ${targetUser.totalRejected}
+Admin: ${targetUser.isAdmin ? 'Yes' : 'No'}
+    `);
+    return;
+  }
+
+  if (text.startsWith('/broadcast') && isAdmin) {
+    const message = text.replace('/broadcast', '').trim();
+    if (!message) {
+      await sendMessage(chat.id, 'Usage: <code>/broadcast [message]</code>');
+      return;
+    }
+    await sendMessage(chat.id, 'Broadcast feature coming soon.');
     return;
   }
 
   if (text.startsWith('/myid')) {
-    await sendMessage(chat.id, `<b>Your Telegram ID:</b> <code>${from.id}</code>\n\nUse this ID to receive credits from the admin.`);
+    await sendMessage(chat.id, `
+<b>Your Telegram ID</b>
+<code>${from.id}</code>
+
+Share this with the admin to receive credits.
+    `);
     return;
   }
 
@@ -151,18 +185,16 @@ Open NexusChecker to start using your credits!
     const user = await storage.getUserByTelegramId(senderId);
     if (user) {
       await sendMessage(chat.id, `
-<b>Your Account Balance</b>
+<b>Your Balance</b>
 
-<b>Available Credits:</b> ${user.credits}
-<b>Cards Charged:</b> ${user.totalCharged}
-<b>Cards Rejected:</b> ${user.totalRejected}
-
-Need more credits? Contact the admin.
+Credits: ${user.credits}
+Approved: ${user.totalCharged}
+Declined: ${user.totalRejected}
       `);
     } else {
       const webAppUrl = getWebAppUrl();
       await sendMessageWithButton(chat.id, 
-        'Your account has not been created yet. Please open the app first to create your account.',
+        'No account found. Open the app to create one.',
         'Open NexusChecker',
         webAppUrl
       );
@@ -172,14 +204,13 @@ Need more credits? Contact the admin.
 
   const webAppUrl = getWebAppUrl();
   await sendMessageWithButton(chat.id, 
-    `Unknown command. Use /start to see available commands or click the button below to open the app.`,
+    'Unknown command. Use /start for help.',
     'Open NexusChecker',
     webAppUrl
   );
 }
 
 function getWebAppUrl(): string {
-  const replitUrl = process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG;
   if (process.env.REPLIT_DEV_DOMAIN) {
     return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
