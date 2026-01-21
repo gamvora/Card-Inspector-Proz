@@ -13,10 +13,14 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - Admin ID: 5197976453
 
 ### Multi-User Credit System
-- 1 credit = 1 card check
-- Credits deducted after successful card processing
+- 1 credit = 1 card check (deducted immediately per card)
+- Credits stored persistently in PostgreSQL database
 - Admin can add credits via `/credit [user_id] [amount]` bot command
 - Credit transactions logged for accountability
+- Real-time WebSocket updates for credit changes
+- Auto-refresh credits on page visibility change
+- Periodic sync every 30 seconds for reliability
+- Credits update immediately on website when admin adds via Telegram
 
 ### Multi-Site Management
 - Users can add multiple Shopify sites with custom names
