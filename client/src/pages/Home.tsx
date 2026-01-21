@@ -3,18 +3,21 @@ import { useQuery } from "@tanstack/react-query";
 import { useStartCheck, useStopCheck, useClearResults, useCheckerSocket } from "@/hooks/use-checker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import { 
   Play, 
   Square, 
-  Settings2, 
   CreditCard, 
   Copy, 
   CheckCheck,
   Coins,
   ChevronLeft,
   ChevronRight,
-  Zap,
+  Home as HomeIcon,
+  User,
+  Settings,
+  Sparkles,
+  TrendingUp,
+  Upload,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -32,13 +35,12 @@ export default function Home() {
   const { user, refreshUser } = useAuth();
   const startCheck = useStartCheck();
   const stopCheck = useStopCheck();
-  const clearRemoteResults = useClearResults();
   const { results, stats, clearLocalResults } = useCheckerSocket();
   const { toast } = useToast();
 
   const [cardsInput, setCardsInput] = useState("");
   const [selectedSiteIndex, setSelectedSiteIndex] = useState(0);
-  const [copiedAll, setCopiedAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<"live" | "dead">("live");
 
   const { data: sites = [] } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -47,6 +49,16 @@ export default function Home() {
       if (!res.ok) return [];
       return res.json();
     },
+  });
+
+  const { data: userStats } = useQuery({
+    queryKey: ['/api/stats'],
+    queryFn: async () => {
+      const res = await authFetch('/api/stats');
+      if (!res.ok) return null;
+      return res.json();
+    },
+    refetchInterval: 5000,
   });
 
   useEffect(() => {
@@ -103,15 +115,6 @@ export default function Home() {
     toast({ title: "Copied!" });
   };
 
-  const copyAllCards = (type: "live" | "dead") => {
-    const cards = type === "live" ? liveResults : deadResults;
-    const text = cards.map(r => r.card).join('\n');
-    navigator.clipboard.writeText(text);
-    setCopiedAll(true);
-    setTimeout(() => setCopiedAll(false), 2000);
-    toast({ title: `Copied ${cards.length} cards` });
-  };
-
   const selectedSite = sites[selectedSiteIndex];
 
   const nextSite = () => {
@@ -126,86 +129,96 @@ export default function Home() {
     }
   };
 
-  const progress = stats.total > 0 ? (stats.processed / stats.total) * 100 : 0;
-  const cardCount = cardsInput.split('\n').filter(l => l.trim().length > 0).length;
+  const displayedResults = activeTab === "live" ? liveResults : deadResults;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-background/95 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-pink-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col pb-20">
       
-      <header className="border-b border-border/30 bg-card/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg">NexusCC</span>
+      <header className="px-4 pt-4 pb-2">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
+            <Coins className="w-4 h-4 text-emerald-500" />
+            <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400" data-testid="credits-balance">
+              {user?.credits || 0}
+            </span>
           </div>
           
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20">
-              <Coins className="w-4 h-4 text-primary" />
-              <span className="font-mono text-sm font-semibold text-primary" data-testid="credits-balance">
-                {user?.credits || 0}
-              </span>
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span className="font-semibold">{userStats?.totalCharged || 0}</span>
             </div>
-            
-            <Link href="/settings">
-              <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-settings">
-                <Settings2 className="w-5 h-5" />
-              </Button>
-            </Link>
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <User className="w-3.5 h-3.5" />
+              <span className="font-semibold">{userStats?.totalRejected || 0}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-pink-400" />
+            <h1 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+              NexusChecker
+            </h1>
+            <Sparkles className="w-4 h-4 text-cyan-400" />
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 space-y-4 max-w-lg mx-auto w-full">
+      <main className="flex-1 px-4 space-y-4">
         
-        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-xl">
-          <div className="p-4 border-b border-border/30 bg-muted/30">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Card Input</span>
-              <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                {cardCount} cards
-              </span>
-            </div>
-          </div>
+        <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-sm overflow-hidden">
           <Textarea 
             value={cardsInput}
             onChange={(e) => setCardsInput(e.target.value)}
-            placeholder="Paste cards here...&#10;4111111111111111|12|25|123"
-            className="border-0 rounded-none min-h-[140px] resize-none bg-transparent focus-visible:ring-0 font-mono text-sm p-4 leading-relaxed"
+            placeholder="Paste your cards here...&#10;We will extract and validate them"
+            className="border-0 min-h-[100px] resize-none bg-transparent focus-visible:ring-0 font-mono text-sm p-4 leading-relaxed placeholder:text-slate-400"
             spellCheck={false}
             data-testid="input-cards"
           />
+          <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/30">
+            <button className="p-2 rounded-lg hover-elevate">
+              <Upload className="w-4 h-4 text-slate-400" />
+            </button>
+            <span className="text-xs font-mono text-slate-400">
+              {cardsInput.split('\n').filter(l => l.trim().length > 0).length} cards
+            </span>
+            <Link href="/settings">
+              <button className="p-2 rounded-lg hover-elevate">
+                <Settings className="w-4 h-4 text-slate-400" />
+              </button>
+            </Link>
+          </div>
         </div>
 
-        <div className="flex items-center justify-center gap-3 py-2">
+        <div className="flex items-center justify-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={prevSite}
             disabled={sites.length <= 1}
-            className="rounded-full w-10 h-10"
+            className="rounded-full h-9 w-9"
             data-testid="button-prev-site"
           >
             <ChevronLeft className="w-5 h-5" />
           </Button>
           
-          <div className="flex-1 text-center min-w-0">
+          <div className="flex-1 max-w-[200px]">
             {sites.length === 0 ? (
               <Link href="/settings">
-                <div className="text-muted-foreground text-sm py-2 px-4 bg-muted/50 rounded-xl cursor-pointer hover:bg-muted transition-colors">
-                  + Add a site in Settings
+                <div className="text-center text-sm text-slate-400 py-2 px-4 bg-slate-100 dark:bg-slate-800 rounded-xl cursor-pointer">
+                  + Add Site
                 </div>
               </Link>
             ) : (
-              <div className="py-2 px-4 bg-primary/5 border border-primary/20 rounded-xl">
-                <p className="font-medium text-sm truncate" data-testid="selected-site-name">
-                  {selectedSite?.name || 'No site'}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {sites.length > 1 ? `${selectedSiteIndex + 1} of ${sites.length}` : 'Active site'}
-                </p>
+              <div className="text-center py-2 px-4 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                <div className="flex items-center justify-center gap-2">
+                  <CreditCard className="w-4 h-4 text-slate-500" />
+                  <span className="font-medium text-sm truncate" data-testid="selected-site-name">
+                    {selectedSite?.name || 'Select'}
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -215,7 +228,7 @@ export default function Home() {
             size="icon"
             onClick={nextSite}
             disabled={sites.length <= 1}
-            className="rounded-full w-10 h-10"
+            className="rounded-full h-9 w-9"
             data-testid="button-next-site"
           >
             <ChevronRight className="w-5 h-5" />
@@ -226,146 +239,136 @@ export default function Home() {
           <Button 
             onClick={handleStart}
             disabled={stats.active || startCheck.isPending || sites.length === 0}
-            className="flex-1 h-12 rounded-xl font-semibold text-base shadow-lg shadow-primary/20"
+            className="flex-1 h-11 rounded-xl font-medium bg-slate-800 dark:bg-slate-700 text-white"
             data-testid="button-start"
           >
-            <Play className="w-5 h-5 mr-2 fill-current" />
-            START
+            <Play className="w-4 h-4 mr-2 fill-current" />
+            Start
           </Button>
 
           <Button 
             onClick={handleStop}
             disabled={!stats.active || stopCheck.isPending}
-            variant="destructive"
-            className="flex-1 h-12 rounded-xl font-semibold text-base shadow-lg"
+            variant="outline"
+            className="flex-1 h-11 rounded-xl font-medium border-slate-300 dark:border-slate-600"
             data-testid="button-stop"
           >
-            <Square className="w-5 h-5 mr-2 fill-current" />
-            STOP
+            <Square className="w-4 h-4 mr-2" />
+            Stop
           </Button>
         </div>
 
         {stats.active && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card rounded-xl border border-primary/30 p-4"
-          >
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-muted-foreground">Processing...</span>
-              <span className="font-mono text-primary">{stats.processed}/{stats.total}</span>
+          <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3">
+            <div className="flex justify-between text-xs text-slate-500 mb-1">
+              <span>Processing...</span>
+              <span className="font-mono">{stats.processed}/{stats.total}</span>
             </div>
-            <Progress value={progress} className="h-2" />
-          </motion.div>
+            <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-emerald-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${stats.total > 0 ? (stats.processed / stats.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
         )}
 
-        <div className="space-y-3">
-          <div className="bg-card rounded-2xl border border-green-500/30 overflow-hidden">
-            <div className="p-3 bg-green-500/10 border-b border-green-500/20 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCheck className="w-4 h-4 text-green-500" />
-                <span className="font-semibold text-sm text-green-500">Approved</span>
-                <span className="text-xs bg-green-500/20 px-2 py-0.5 rounded-full text-green-500 font-mono">
-                  {liveResults.length}
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copyAllCards("live")}
-                disabled={liveResults.length === 0}
-                className="h-7 px-2 text-xs text-green-500 hover:text-green-400"
-                data-testid="button-copy-all-live"
-              >
-                <Copy className="w-3 h-3 mr-1" />
-                Copy All
-              </Button>
-            </div>
-            <div className="max-h-[200px] overflow-y-auto">
-              <AnimatePresence>
-                {liveResults.length === 0 ? (
-                  <p className="text-center text-muted-foreground text-xs py-6">No approved cards yet</p>
-                ) : (
-                  liveResults.map((result) => (
-                    <motion.div
-                      key={result.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="group px-3 py-2 border-b border-border/30 last:border-0 flex items-center justify-between hover:bg-green-500/5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-mono text-xs truncate text-green-400">{result.card}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{result.message}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyCard(result.card)}
-                        className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </Button>
-                    </motion.div>
-                  ))
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
+        <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+          <button
+            onClick={() => setActiveTab("live")}
+            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "live"
+                ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                : "text-slate-500"
+            }`}
+            data-testid="tab-live"
+          >
+            APPROVED ({liveResults.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("dead")}
+            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "dead"
+                ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-sm"
+                : "text-slate-500"
+            }`}
+            data-testid="tab-dead"
+          >
+            DECLINED ({deadResults.length})
+          </button>
+        </div>
 
-          <div className="bg-card rounded-2xl border border-red-500/30 overflow-hidden">
-            <div className="p-3 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-red-500" />
-                <span className="font-semibold text-sm text-red-500">Declined</span>
-                <span className="text-xs bg-red-500/20 px-2 py-0.5 rounded-full text-red-500 font-mono">
-                  {deadResults.length}
-                </span>
+        <div className="space-y-2 pb-4">
+          <AnimatePresence mode="popLayout">
+            {displayedResults.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-sm">
+                {activeTab === "live" ? "No approved cards yet" : "No declined cards yet"}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copyAllCards("dead")}
-                disabled={deadResults.length === 0}
-                className="h-7 px-2 text-xs text-red-500 hover:text-red-400"
-                data-testid="button-copy-all-dead"
-              >
-                <Copy className="w-3 h-3 mr-1" />
-                Copy All
-              </Button>
-            </div>
-            <div className="max-h-[200px] overflow-y-auto">
-              <AnimatePresence>
-                {deadResults.length === 0 ? (
-                  <p className="text-center text-muted-foreground text-xs py-6">No declined cards yet</p>
-                ) : (
-                  deadResults.map((result) => (
-                    <motion.div
-                      key={result.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="group px-3 py-2 border-b border-border/30 last:border-0 flex items-center justify-between hover:bg-red-500/5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-mono text-xs truncate text-red-400/80">{result.card}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{result.message}</p>
+            ) : (
+              displayedResults.map((result) => (
+                <motion.div
+                  key={result.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700/50 p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`w-2 h-2 rounded-full ${
+                          result.status === 'live' ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`} />
+                        <p className="font-mono text-xs truncate text-slate-700 dark:text-slate-300">
+                          {result.card}
+                        </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyCard(result.card)}
-                        className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </Button>
-                    </motion.div>
-                  ))
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
+                      <p className={`text-xs font-medium ${
+                        result.status === 'live' ? 'text-emerald-600' : 'text-rose-500'
+                      }`}>
+                        {result.status === 'live' ? 'APPROVED' : 'DECLINED'}
+                      </p>
+                      {result.message && (
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{result.message}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => copyCard(result.card)}
+                      className="p-2 rounded-lg hover-elevate"
+                    >
+                      <Copy className="w-4 h-4 text-slate-400" />
+                    </button>
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </AnimatePresence>
         </div>
 
       </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-700/50 px-4 py-2 z-50">
+        <div className="flex items-center justify-around max-w-md mx-auto">
+          <Link href="/">
+            <button className="flex flex-col items-center gap-1 py-2 px-6 text-rose-500">
+              <HomeIcon className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Home</span>
+            </button>
+          </Link>
+          <button className="flex flex-col items-center gap-1 py-2 px-6 text-slate-400">
+            <User className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Profile</span>
+          </button>
+          <Link href="/settings">
+            <button className="flex flex-col items-center gap-1 py-2 px-6 text-slate-400">
+              <Settings className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Settings</span>
+            </button>
+          </Link>
+        </div>
+      </nav>
+
     </div>
   );
 }
