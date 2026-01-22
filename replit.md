@@ -6,7 +6,16 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 
 ## Recent Changes (January 2026)
 
-### Card Processing Improvements (Latest)
+### Interactive Tutorial System (Latest)
+- **6-Step Tutorial**: Welcome, Cards, Site Selection, Start, Results, Settings
+- **Auto-launch**: Tutorial shows automatically for first-time users (hasSeenTutorial flag)
+- **Manual Restart**: HelpCircle button in header (purple icon) to restart tutorial anytime
+- **Animated Demos**: Each step has CSS/Framer Motion animations demonstrating the feature
+- **Keyboard Navigation**: Arrow keys (left/right), Enter (next), Escape (close)
+- **Accessibility**: ARIA attributes, focus management, screen reader support
+- **Persistence**: Tutorial completion saved to database via `/api/tutorial/complete`
+
+### Card Processing Improvements
 - **Parallel Batch Processing**: Cards are processed in parallel batches (up to 10 cards at once) for maximum speed
 - **Improved Stop Functionality**: Stop button now kills all processes immediately with SIGKILL fallback
 - **Auto-refresh**: Status updates every 5 seconds, credits refresh every 30 seconds

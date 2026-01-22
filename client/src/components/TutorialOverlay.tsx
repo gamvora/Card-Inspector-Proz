@@ -26,48 +26,48 @@ interface TutorialStep {
 const tutorialSteps: TutorialStep[] = [
   {
     id: "welcome",
-    title: "مرحباً بك في NexusChecker! 🎉",
-    description: "هذا الدليل سيساعدك على فهم كيفية استخدام التطبيق. اتبع الخطوات لتتعلم كل شيء!",
+    title: "Welcome to NexusChecker",
+    description: "This guide will help you understand how to use the app. Follow the steps to learn everything!",
     targetSelector: "[data-tutorial='header']",
     position: "bottom",
     animation: <WelcomeAnimation />
   },
   {
     id: "cards",
-    title: "إدخال البطاقات",
-    description: "أدخل البطاقات هنا بالتنسيق التالي:\nرقم البطاقة|الشهر|السنة|CVV\nيمكنك إدخال عدة بطاقات، كل بطاقة في سطر جديد.",
+    title: "Enter Your Cards",
+    description: "Enter cards here in this format:\nCard Number|Month|Year|CVV\nYou can enter multiple cards, each on a new line.",
     targetSelector: "[data-tutorial='cards-input']",
     position: "top",
     animation: <CardsAnimation />
   },
   {
     id: "site",
-    title: "اختيار الموقع",
-    description: "استخدم الأسهم لاختيار موقع Shopify الذي تريد الفحص عليه. يمكنك إضافة مواقع جديدة من الإعدادات.",
+    title: "Select Your Site",
+    description: "Use the arrows to choose the Shopify site you want to check on. You can add new sites from Settings.",
     targetSelector: "[data-tutorial='site-selector']",
     position: "top",
     animation: <SiteAnimation />
   },
   {
     id: "start",
-    title: "بدء الفحص",
-    description: "اضغط على زر Start لبدء فحص البطاقات. سيتم خصم رصيد واحد لكل بطاقة.",
+    title: "Start Checking",
+    description: "Press the Start button to begin checking cards. One credit will be deducted per card.",
     targetSelector: "[data-tutorial='start-button']",
     position: "top",
     animation: <StartAnimation />
   },
   {
     id: "results",
-    title: "عرض النتائج",
-    description: "ستظهر نتائج الفحص هنا:\n✅ APPROVED = البطاقة شغالة\n❌ DECLINED = البطاقة مرفوضة",
+    title: "View Results",
+    description: "Check results will appear here:\nAPPROVED = Card is live\nDECLINED = Card is dead",
     targetSelector: "[data-tutorial='results']",
     position: "top",
     animation: <ResultsAnimation />
   },
   {
     id: "settings",
-    title: "الإعدادات",
-    description: "من صفحة الإعدادات يمكنك:\n• إضافة مواقع Shopify جديدة\n• إضافة البروكسي الخاص بك\n• تغيير المظهر",
+    title: "Settings",
+    description: "From the Settings page you can:\n- Add new Shopify sites\n- Add your proxy\n- Change the theme",
     targetSelector: "[data-tutorial='settings-nav']",
     position: "top",
     animation: <SettingsAnimation />
