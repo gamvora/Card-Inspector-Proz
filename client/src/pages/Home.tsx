@@ -26,6 +26,7 @@ import {
   FileUp,
   Eraser,
   Globe,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -417,6 +418,41 @@ export default function Home() {
           }} />
           
           <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden relative">
+            {/* X button to clear all cards */}
+            <AnimatePresence>
+              {cardsInput.trim() && !stats.active && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setCardsInput('')}
+                  className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-muted/80 hover:bg-destructive/20 border border-border transition-colors"
+                  data-testid="button-clear-cards"
+                >
+                  <X className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                </motion.button>
+              )}
+            </AnimatePresence>
+            
+            {/* Overlay when checking is in progress */}
+            <AnimatePresence>
+              {stats.active && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-20 bg-background/60 backdrop-blur-sm flex items-center justify-center rounded-2xl"
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                    <span className="text-sm font-medium text-muted-foreground">Checking in progress...</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
             <Textarea 
               value={cardsInput}
               onChange={(e) => setCardsInput(e.target.value)}
@@ -425,6 +461,7 @@ export default function Home() {
               placeholder="Paste your cards here...&#10;Format: 4111111111111111|12|2025|123"
               className="border-0 min-h-[140px] resize-none bg-transparent focus-visible:ring-0 font-mono text-sm p-4 leading-relaxed placeholder:text-muted-foreground/50"
               spellCheck={false}
+              disabled={stats.active}
               data-testid="input-cards"
             />
             <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
