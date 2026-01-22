@@ -52,11 +52,22 @@ export default function Home() {
   const { user, refreshUser } = useAuth();
   const startCheck = useStartCheck();
   const stopCheck = useStopCheck();
-  const { results, stats, clearLocalResults, fetchCheckStatus } = useCheckerContext();
+  const { results, stats, clearLocalResults, fetchCheckStatus, cardsInput, setCardsInput } = useCheckerContext();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [cardsInput, setCardsInput] = useState("");
+  const [cardsInputState, setCardsInputState] = useState("");
+  // Use context for cardsInput but allow local state for immediate feedback
+  useEffect(() => {
+    if (cardsInput && !cardsInputState) {
+      setCardsInputState(cardsInput);
+    }
+  }, [cardsInput]);
+
+  const handleCardsInputChange = (val: string) => {
+    setCardsInputState(val);
+    setCardsInput(val);
+  };
   const [selectedSiteIndex, setSelectedSiteIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"live" | "dead">("live");
   const [lastChargedCount, setLastChargedCount] = useState(0);
@@ -141,7 +152,7 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
-      setCardsInput(prev => prev ? prev + '\n' + content : content);
+      handleCardsInputChange(cardsInputState ? cardsInputState + '\n' + content : content);
       toast({
         title: "File Loaded",
         description: `${content.split('\n').filter(l => l.trim()).length} cards imported`,
@@ -156,7 +167,7 @@ export default function Home() {
   };
 
   const cleanCards = () => {
-    const lines = cardsInput.split('\n').map(l => l.trim()).filter(l => l);
+    const lines = cardsInputState.split('\n').map(l => l.trim()).filter(l => l);
     const validCards: string[] = [];
     const seen = new Set<string>();
     let removedDuplicates = 0;
@@ -213,7 +224,7 @@ export default function Home() {
       validCards.push(line);
     }
 
-    setCardsInput(validCards.join('\n'));
+    handleCardsInputChange(validCards.join('\n'));
     
     const total = removedDuplicates + removedExpired + removedInvalid;
     if (total > 0) {
@@ -231,7 +242,7 @@ export default function Home() {
   };
 
   const handleStart = async () => {
-    if (!cardsInput.trim()) {
+    if (!cardsInputState.trim()) {
       toast({
         title: "Input Required",
         description: "Please enter cards to check.",
@@ -240,7 +251,7 @@ export default function Home() {
       return;
     }
     
-    const cards = cardsInput.split('\n').map(c => c.trim()).filter(c => c.length > 0);
+    const cards = cardsInputState.split('\n').map(c => c.trim()).filter(c => c.length > 0);
     if (cards.length === 0) return;
 
     if (!user?.isAdmin && (user?.credits || 0) < cards.length) {
@@ -274,13 +285,13 @@ export default function Home() {
   const selectedSite = sites[selectedSiteIndex];
 
   const nextSite = () => {
-    if (sites.length > 0) {
+    if (sites.length > 0 && !stats.active) {
       setSelectedSiteIndex((prev) => (prev + 1) % sites.length);
     }
   };
 
   const prevSite = () => {
-    if (sites.length > 0) {
+    if (sites.length > 0 && !stats.active) {
       setSelectedSiteIndex((prev) => (prev - 1 + sites.length) % sites.length);
     }
   };
@@ -420,14 +431,14 @@ export default function Home() {
           <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden relative">
             {/* X button to clear all cards */}
             <AnimatePresence>
-              {cardsInput.trim() && !stats.active && (
+              {cardsInputState.trim() && !stats.active && (
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setCardsInput('')}
+                  onClick={() => handleCardsInputChange('')}
                   className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-muted/80 hover:bg-destructive/20 border border-border transition-colors"
                   data-testid="button-clear-cards"
                 >
@@ -454,8 +465,8 @@ export default function Home() {
             </AnimatePresence>
             
             <Textarea 
-              value={cardsInput}
-              onChange={(e) => setCardsInput(e.target.value)}
+              value={cardsInputState}
+              onChange={(e) => handleCardsInputChange(e.target.value)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               placeholder="Paste your cards here...&#10;Format: 4111111111111111|12|2025|123"
@@ -487,13 +498,13 @@ export default function Home() {
                 </motion.button>
               </div>
               <motion.div 
-                key={cardsInput.split('\n').filter(l => l.trim().length > 0).length}
+                key={cardsInputState.split('\n').filter(l => l.trim().length > 0).length}
                 initial={{ scale: 1.1 }}
                 animate={{ scale: 1 }}
                 className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-muted rounded-lg text-muted-foreground"
               >
                 <CreditCard className="w-3.5 h-3.5" />
-                <span>{cardsInput.split('\n').filter(l => l.trim().length > 0).length} cards</span>
+                <span>{cardsInputState.split('\n').filter(l => l.trim().length > 0).length} cards</span>
               </motion.div>
               <Link href="/settings">
                 <motion.button 
@@ -518,7 +529,7 @@ export default function Home() {
             variant="ghost"
             size="icon"
             onClick={prevSite}
-            disabled={sites.length <= 1}
+            disabled={sites.length <= 1 || stats.active}
             className="rounded-full h-10 w-10 border border-border"
             data-testid="button-prev-site"
           >
@@ -535,12 +546,12 @@ export default function Home() {
             >
               {sites.length === 0 ? (
                 <Link href="/settings">
-                  <div className="text-center text-sm text-muted-foreground py-2.5 px-4 bg-muted rounded-xl cursor-pointer border-2 border-dashed border-border">
+                  <div className={`text-center text-sm text-muted-foreground py-2.5 px-4 bg-muted rounded-xl cursor-pointer border-2 border-dashed border-border ${stats.active ? 'opacity-50 pointer-events-none' : ''}`}>
                     + Add Site
                   </div>
                 </Link>
               ) : (
-                <div className="text-center py-2.5 px-4 bg-card rounded-xl border border-border">
+                <div className={`text-center py-2.5 px-4 bg-card rounded-xl border border-border ${stats.active ? 'opacity-50' : ''}`}>
                   <div className="flex items-center justify-center gap-2">
                     <CreditCard className="w-4 h-4 text-purple-500" />
                     <span className="font-semibold text-sm truncate" data-testid="selected-site-name">
@@ -556,7 +567,7 @@ export default function Home() {
             variant="ghost"
             size="icon"
             onClick={nextSite}
-            disabled={sites.length <= 1}
+            disabled={sites.length <= 1 || stats.active}
             className="rounded-full h-10 w-10 border border-border"
             data-testid="button-next-site"
           >

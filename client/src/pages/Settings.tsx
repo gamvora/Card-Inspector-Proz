@@ -77,16 +77,20 @@ interface ProxyTestResult {
   speed?: number;
 }
 
+import { useCheckerContext } from "@/lib/checker-context";
+
 export default function Settings() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { stats } = useCheckerContext();
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteUrl, setNewSiteUrl] = useState('');
   const [newProxies, setNewProxies] = useState('');
   const [testingProxy, setTestingProxy] = useState<string | null>(null);
   const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
+  const [showFullProxy, setShowFullProxy] = useState<number | null>(null);
 
   const { data: sites = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -205,6 +209,10 @@ export default function Settings() {
   });
 
   const handleAddSite = () => {
+    if (stats.active) {
+      toast({ title: 'Finish current check first', variant: 'destructive' });
+      return;
+    }
     if (!newSiteName.trim() || !newSiteUrl.trim()) {
       toast({ title: 'Please fill all fields', variant: 'destructive' });
       return;
@@ -213,9 +221,23 @@ export default function Settings() {
   };
 
   const handleTestAndSaveProxies = async () => {
+    if (stats.active) {
+      toast({ title: 'Finish current check first', variant: 'destructive' });
+      return;
+    }
     const proxyList = newProxies.split('\n').map(p => p.trim()).filter(p => p);
     if (proxyList.length === 0) {
       toast({ title: 'Enter at least one proxy', variant: 'destructive' });
+      return;
+    }
+
+    if (proxies.length > 0) {
+      toast({ title: 'Only one proxy allowed', description: 'Clear existing proxy first', variant: 'destructive' });
+      return;
+    }
+
+    if (proxyList.length > 1) {
+      toast({ title: 'Only one proxy allowed', variant: 'destructive' });
       return;
     }
 
@@ -351,6 +373,7 @@ export default function Settings() {
                 placeholder="Site name (e.g. Nike Store)"
                 value={newSiteName}
                 onChange={(e) => setNewSiteName(e.target.value)}
+                disabled={stats.active}
                 className="rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-medium"
                 data-testid="input-site-name"
               />
@@ -358,12 +381,13 @@ export default function Settings() {
                 placeholder="https://store.myshopify.com"
                 value={newSiteUrl}
                 onChange={(e) => setNewSiteUrl(e.target.value)}
+                disabled={stats.active}
                 className="rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
                 data-testid="input-site-url"
               />
               <Button 
                 onClick={handleAddSite}
-                disabled={addSiteMutation.isPending}
+                disabled={addSiteMutation.isPending || stats.active}
                 className="w-full rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-lg shadow-rose-500/20 border-0"
                 size="lg"
                 data-testid="button-add-site"
@@ -492,9 +516,40 @@ export default function Settings() {
                 setProxyTestResult(null);
               }}
               rows={4}
+              disabled={stats.active}
               className="font-mono text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 mb-4"
               data-testid="input-proxies"
             />
+
+            <div className="flex flex-col gap-3 mb-4">
+              <Button 
+                variant="outline"
+                onClick={handleTestFirstProxy}
+                disabled={testingProxy !== null || !newProxies.trim() || stats.active}
+                className="rounded-xl border-2"
+                data-testid="button-test-proxy"
+              >
+                {testingProxy ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4 mr-2 text-amber-500" />
+                )}
+                Test Connection
+              </Button>
+              <Button 
+                onClick={handleTestAndSaveProxies}
+                disabled={addProxiesMutation.isPending || !newProxies.trim() || stats.active}
+                className="rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-0 shadow-lg shadow-indigo-500/20"
+                data-testid="button-save-proxy"
+              >
+                {addProxiesMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
+                Test and Save Proxy
+              </Button>
+            </div>
 
             <AnimatePresence>
               {proxyTestResult && (

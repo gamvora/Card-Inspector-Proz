@@ -22,6 +22,8 @@ interface CheckerContextType {
   logs: { message: string; type: string }[];
   credits: number | null;
   isConnected: boolean;
+  cardsInput: string;
+  setCardsInput: (val: string) => void;
   clearLocalResults: () => void;
   refreshCredits: () => Promise<void>;
   fetchCheckStatus: () => Promise<void>;
@@ -35,6 +37,7 @@ export function CheckerProvider({ children }: { children: ReactNode }) {
   const [logs, setLogs] = useState<{ message: string; type: string }[]>([]);
   const [credits, setCredits] = useState<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [cardsInput, setCardsInput] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -190,6 +193,8 @@ export function CheckerProvider({ children }: { children: ReactNode }) {
       logs,
       credits,
       isConnected,
+      cardsInput,
+      setCardsInput,
       clearLocalResults,
       refreshCredits,
       fetchCheckStatus,
