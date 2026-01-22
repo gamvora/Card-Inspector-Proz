@@ -27,7 +27,7 @@ export function ResultsFeed({ title, results, type }: ResultsFeedProps) {
         <Badge 
           variant={isLive ? "default" : "destructive"} 
           className="font-mono text-[10px] md:text-xs"
-          data-testid={isLive ? "count-approved" : "count-rejected"}
+          data-testid={isLive ? "count-live" : "count-rejected"}
         >
           {filteredResults.length}
         </Badge>

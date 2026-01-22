@@ -594,7 +594,7 @@ export default function Home() {
             data-testid="tab-live"
           >
             <CheckCircle2 className="w-4 h-4" />
-            APPROVED ({liveResults.length})
+            LIVE ({liveResults.length})
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.98 }}
@@ -635,7 +635,7 @@ export default function Home() {
                   )}
                 </motion.div>
                 <p className="text-muted-foreground text-sm">
-                  {activeTab === "live" ? "No approved cards yet" : "No declined cards yet"}
+                  {activeTab === "live" ? "No live cards yet" : "No declined cards yet"}
                 </p>
               </motion.div>
             ) : (
@@ -677,7 +677,7 @@ export default function Home() {
                       <p className={`text-sm font-bold ${
                         result.status === 'live' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                       }`}>
-                        {result.status === 'live' ? 'APPROVED' : (result.message || 'DECLINED')}
+                        {result.status === 'live' ? 'LIVE' : (result.message || 'DECLINED')}
                       </p>
                     </div>
                     <motion.button

@@ -215,12 +215,9 @@
 
 /* Rainbow Border Animation */
 @keyframes rainbowBorder {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 100% 50%;
-  }
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .neon-border-active {
@@ -230,16 +227,24 @@
 .neon-border-active::before {
   content: '';
   position: absolute;
-  inset: -2px;
-  border-radius: 1rem;
-  padding: 2px;
-  background: linear-gradient(90deg, #a855f7, #ec4899, #6366f1, #a855f7);
-  background-size: 300% 100%;
-  animation: neonPulse 3s linear infinite;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+  inset: -3px;
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    #ff0000,
+    #ff8000,
+    #ffff00,
+    #00ff00,
+    #00ffff,
+    #0080ff,
+    #8000ff,
+    #ff00ff,
+    #ff0000
+  );
+  background-size: 400% 100%;
+  animation: rainbowBorder 3s linear infinite;
+  z-index: -1;
+  filter: blur(4px);
 }
 
 /* Glow effect for active elements */
