@@ -24,6 +24,8 @@ import {
   XCircle,
   MessageCircle,
   FileUp,
+  Eraser,
+  Globe,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -58,6 +60,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"live" | "dead">("live");
   const [lastChargedCount, setLastChargedCount] = useState(0);
   const prevResultsRef = useRef<CheckResult[]>([]);
+  const notifiedCardsRef = useRef<Set<number>>(new Set());
   const [isFocused, setIsFocused] = useState(false);
 
   const { data: sites = [] } = useQuery<Site[]>({
@@ -100,12 +103,10 @@ export default function Home() {
 
   useEffect(() => {
     const liveResults = results.filter(r => r.status === 'live');
-    const prevLiveResults = prevResultsRef.current.filter(r => r.status === 'live');
     
-    if (liveResults.length > prevLiveResults.length) {
-      const newLiveCards = liveResults.slice(prevLiveResults.length);
-      
-      newLiveCards.forEach((card) => {
+    liveResults.forEach((card) => {
+      if (!notifiedCardsRef.current.has(card.id)) {
+        notifiedCardsRef.current.add(card.id);
         toast({
           title: "CHARGED!",
           description: (
@@ -117,8 +118,8 @@ export default function Home() {
           className: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800",
           soundType: 'success',
         });
-      });
-    }
+      }
+    });
     
     prevResultsRef.current = results;
   }, [results, toast]);
@@ -153,6 +154,81 @@ export default function Home() {
     }
   };
 
+  const cleanCards = () => {
+    const lines = cardsInput.split('\n').map(l => l.trim()).filter(l => l);
+    const validCards: string[] = [];
+    const seen = new Set<string>();
+    let removedDuplicates = 0;
+    let removedExpired = 0;
+    let removedInvalid = 0;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    for (const line of lines) {
+      const parts = line.split('|');
+      if (parts.length < 4) {
+        removedInvalid++;
+        continue;
+      }
+
+      const [cardNum, expMonth, expYear, cvv] = parts;
+      
+      // Check card number (13-19 digits)
+      const cleanCardNum = cardNum.replace(/\s/g, '');
+      if (!/^\d{13,19}$/.test(cleanCardNum)) {
+        removedInvalid++;
+        continue;
+      }
+
+      // Check expiry
+      const month = parseInt(expMonth);
+      let year = parseInt(expYear);
+      if (year < 100) year += 2000;
+      
+      if (isNaN(month) || month < 1 || month > 12) {
+        removedInvalid++;
+        continue;
+      }
+
+      if (year < currentYear || (year === currentYear && month < currentMonth)) {
+        removedExpired++;
+        continue;
+      }
+
+      // Check CVV (3-4 digits)
+      if (!/^\d{3,4}$/.test(cvv)) {
+        removedInvalid++;
+        continue;
+      }
+
+      // Check duplicates
+      const cardKey = cleanCardNum;
+      if (seen.has(cardKey)) {
+        removedDuplicates++;
+        continue;
+      }
+      seen.add(cardKey);
+      validCards.push(line);
+    }
+
+    setCardsInput(validCards.join('\n'));
+    
+    const total = removedDuplicates + removedExpired + removedInvalid;
+    if (total > 0) {
+      toast({
+        title: "Cards Cleaned",
+        description: `Removed: ${removedDuplicates} duplicates, ${removedExpired} expired, ${removedInvalid} invalid`,
+        soundType: 'success',
+      });
+    } else {
+      toast({
+        title: "All cards are valid",
+        description: `${validCards.length} cards ready to check`,
+      });
+    }
+  };
+
   const handleStart = async () => {
     if (!cardsInput.trim()) {
       toast({
@@ -177,6 +253,7 @@ export default function Home() {
     
     clearLocalResults();
     prevResultsRef.current = [];
+    notifiedCardsRef.current.clear();
     const selectedSite = sites[selectedSiteIndex];
     startCheck.mutate({ cards, siteId: selectedSite?.id });
   };
@@ -322,20 +399,21 @@ export default function Home() {
           }`}
           style={{
             background: isFocused 
-              ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(236, 72, 153, 0.1))'
+              ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.05), rgba(59, 130, 246, 0.05))'
               : undefined
           }}
         >
           <div className={`absolute inset-0 rounded-2xl transition-opacity duration-500 ${
             isFocused ? 'opacity-100' : 'opacity-0'
           }`} style={{
-            background: 'linear-gradient(90deg, #a855f7, #ec4899, #6366f1, #a855f7)',
-            backgroundSize: '300% 100%',
-            animation: isFocused ? 'neonPulse 3s linear infinite' : 'none',
+            background: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff0000)',
+            backgroundSize: '400% 100%',
+            animation: isFocused ? 'rainbowBorder 4s linear infinite' : 'none',
             padding: '2px',
             WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             WebkitMaskComposite: 'xor',
             maskComposite: 'exclude',
+            filter: 'brightness(1.2) saturate(1.3)',
           }} />
           
           <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden relative">
@@ -350,15 +428,27 @@ export default function Home() {
               data-testid="input-cards"
             />
             <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
-              <motion.button 
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => fileInputRef.current?.click()}
-                className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-colors"
-                data-testid="button-upload-file"
-              >
-                <FileUp className="w-4 h-4 text-purple-500" />
-              </motion.button>
+              <div className="flex items-center gap-2">
+                <motion.button 
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-colors"
+                  data-testid="button-upload-file"
+                >
+                  <FileUp className="w-4 h-4 text-purple-500" />
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={cleanCards}
+                  disabled={!cardsInput.trim()}
+                  className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                  data-testid="button-clean-cards"
+                >
+                  <Eraser className="w-4 h-4 text-amber-500" />
+                </motion.button>
+              </div>
               <motion.div 
                 key={cardsInput.split('\n').filter(l => l.trim().length > 0).length}
                 initial={{ scale: 1.1 }}
@@ -564,7 +654,7 @@ export default function Home() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-1">
                         <motion.span 
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
@@ -576,6 +666,14 @@ export default function Home() {
                           {result.card}
                         </p>
                       </div>
+                      {selectedSite && (
+                        <div className="flex items-center gap-1.5 mb-2 ml-5">
+                          <Globe className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground font-medium truncate">
+                            {selectedSite.name}
+                          </span>
+                        </div>
+                      )}
                       <p className={`text-sm font-bold ${
                         result.status === 'live' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                       }`}>
