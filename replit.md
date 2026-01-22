@@ -7,7 +7,7 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 ## Recent Changes (January 2026)
 
 ### Card Processing Improvements (Latest)
-- **Sequential Processing**: Cards are now checked in order (one by one) instead of batch/parallel processing
+- **Parallel Batch Processing**: Cards are processed in parallel batches (up to 10 cards at once) for maximum speed
 - **Improved Stop Functionality**: Stop button now kills all processes immediately with SIGKILL fallback
 - **Auto-refresh**: Status updates every 5 seconds, credits refresh every 30 seconds
 - **Dev login removed**: Only Telegram authentication is supported (no dev_tester user)

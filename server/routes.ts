@@ -288,113 +288,127 @@ export async function registerRoutes(
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
+    // Calculate batch size for parallel processing (half of cards or max 10)
+    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 2), 1), 10);
+
     broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: allCards.length } });
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
-    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${allCards.length} cards | ${proxies.length} proxies | Sequential processing`, type: 'info' } });
+    broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${allCards.length} cards | ${proxies.length} proxies | Parallel: ${BATCH_SIZE}`, type: 'info' } });
 
-    // Process ALL cards in order - one by one (sequential)
-    for (let i = 0; i < allCards.length; i++) {
+    // Process cards in parallel batches
+    for (let i = 0; i < allCards.length; i += BATCH_SIZE) {
       if (job.shouldStop) {
         broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: 'Stopped by user', type: 'info' } });
         break;
       }
 
-      const cardStr = allCards[i];
-      const proxyIndex = i % (proxies.length || 1);
-      const currentProxy = proxies[proxyIndex] || '';
+      const batch = allCards.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(allCards.length / BATCH_SIZE);
+      
+      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches} - Processing ${batch.length} cards...`, type: 'info' } });
 
-      // Check if card is expired first
-      if (isCardExpired(cardStr)) {
-        const saved = await storage.addResult({
-          card: cardStr,
-          status: 'dead',
-          message: 'Expired Card',
-          userId: userId,
-          sessionId: sessionId,
-        });
-        
-        broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
-        
-        processedCount++;
-        rejectedCount++;
-        job.processed = processedCount;
-        job.rejected = rejectedCount;
-        
-        broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
-          active: true, 
-          processed: processedCount, 
-          total: allCards.length,
-          charged: chargedCount,
-          rejected: rejectedCount 
-        }});
-        
-        await storage.updateUserStats(telegramId, 0, 1);
-        continue;
-      }
-
-      // Process valid card with checker
-      try {
-        const onLog = (msg: string) => {
-          if (job.shouldStop) return;
-          const cardPrefix = cardStr.substring(0, 6);
-          broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
-        };
-        
-        const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
-        
-        if (job.shouldStop || result.message?.includes('[STOPPED]')) {
-          break;
-        }
-        
-        let status = 'unknown';
-        let isCharged = false;
-        
-        if (result.status === 'live') {
-          status = 'live';
-          isCharged = true;
-        } else if (result.status === 'dead' || result.status === 'error') {
-          status = 'dead';
+      // Process batch in parallel
+      const batchPromises = batch.map(async (cardStr, idx) => {
+        if (job.shouldStop) {
+          return { success: false, stopped: true, charged: false };
         }
 
-        const saved = await storage.addResult({
-          card: cardStr,
-          status: status,
-          message: result.message || 'No message',
-          userId: userId,
-          sessionId: sessionId,
-        });
+        const proxyIndex = (i + idx) % (proxies.length || 1);
+        const currentProxy = proxies[proxyIndex] || '';
 
-        broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
+        // Check if card is expired first (fast check, no network)
+        if (isCardExpired(cardStr)) {
+          const saved = await storage.addResult({
+            card: cardStr,
+            status: 'dead',
+            message: 'Expired Card',
+            userId: userId,
+            sessionId: sessionId,
+          });
+          
+          broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
+          await storage.updateUserStats(telegramId, 0, 1);
+          return { success: true, stopped: false, charged: false };
+        }
 
-        // Deduct 1 credit for this card
-        const currentUser = await storage.getUserByTelegramId(telegramId);
-        if (currentUser && !currentUser.isAdmin) {
-          const updatedUser = await storage.updateUserCredits(telegramId, -1);
-          if (updatedUser) {
-            broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: updatedUser.credits } });
+        // Process valid card with checker
+        try {
+          const onLog = (msg: string) => {
+            if (job.shouldStop) return;
+            const cardPrefix = cardStr.substring(0, 6);
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
+          };
+          
+          const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
+          
+          if (job.shouldStop || result.message?.includes('[STOPPED]')) {
+            return { success: false, stopped: true, charged: false };
           }
-        }
+          
+          let status = 'unknown';
+          let isCharged = false;
+          
+          if (result.status === 'live') {
+            status = 'live';
+            isCharged = true;
+          } else if (result.status === 'dead' || result.status === 'error') {
+            status = 'dead';
+          }
 
-        // Send charged card to Telegram bot
-        if (isCharged && siteId) {
-          const site = await storage.getSiteById(siteId);
-          const siteName = site?.name || targetUrl;
-          sendChargedCardNotification(telegramId, cardStr, siteName, result.message || 'Charged').catch(console.error);
-        } else if (isCharged) {
-          sendChargedCardNotification(telegramId, cardStr, targetUrl, result.message || 'Charged').catch(console.error);
-        }
+          const saved = await storage.addResult({
+            card: cardStr,
+            status: status,
+            message: result.message || 'No message',
+            userId: userId,
+            sessionId: sessionId,
+          });
 
-        processedCount++;
-        if (isCharged) {
-          chargedCount++;
-        } else {
-          rejectedCount++;
+          broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
+
+          // Deduct 1 credit for this card
+          const currentUser = await storage.getUserByTelegramId(telegramId);
+          if (currentUser && !currentUser.isAdmin) {
+            const updatedUser = await storage.updateUserCredits(telegramId, -1);
+            if (updatedUser) {
+              broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: updatedUser.credits } });
+            }
+          }
+
+          // Send charged card to Telegram bot
+          if (isCharged && siteId) {
+            const site = await storage.getSiteById(siteId);
+            const siteName = site?.name || targetUrl;
+            sendChargedCardNotification(telegramId, cardStr, siteName, result.message || 'Charged').catch(console.error);
+          } else if (isCharged) {
+            sendChargedCardNotification(telegramId, cardStr, targetUrl, result.message || 'Charged').catch(console.error);
+          }
+
+          return { success: true, stopped: false, charged: isCharged };
+        } catch (e: any) {
+          if (!job.shouldStop) {
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
+          }
+          return { success: false, stopped: job.shouldStop, charged: false };
         }
-        
-        job.processed = processedCount;
-        job.charged = chargedCount;
-        job.rejected = rejectedCount;
-        
+      });
+
+      // Wait for all cards in batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      const actuallyProcessed = batchResults.filter(r => !r.stopped).length;
+      const batchCharged = batchResults.filter(r => r.charged).length;
+      const batchRejected = actuallyProcessed - batchCharged;
+      
+      processedCount += actuallyProcessed;
+      chargedCount += batchCharged;
+      rejectedCount += batchRejected;
+      
+      job.processed = processedCount;
+      job.charged = chargedCount;
+      job.rejected = rejectedCount;
+      
+      if (!job.shouldStop) {
         broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
           active: true, 
           processed: processedCount, 
@@ -402,11 +416,6 @@ export async function registerRoutes(
           charged: chargedCount,
           rejected: rejectedCount 
         }});
-
-      } catch (e: any) {
-        if (!job.shouldStop) {
-          broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Error [${cardStr.substring(0, 6)}]: ${e.message}`, type: 'error' } });
-        }
       }
     }
 
