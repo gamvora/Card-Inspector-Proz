@@ -574,11 +574,8 @@ export default function Home() {
                       <p className={`text-sm font-bold ${
                         result.status === 'live' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                       }`}>
-                        {result.status === 'live' ? 'APPROVED' : 'DECLINED'}
+                        {result.status === 'live' ? 'APPROVED' : (result.message || 'DECLINED')}
                       </p>
-                      {result.message && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{result.message}</p>
-                      )}
                     </div>
                     <motion.button
                       whileHover={{ scale: 1.1 }}

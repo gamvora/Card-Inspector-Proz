@@ -217,6 +217,32 @@ export async function registerRoutes(
 
   const getBatchSize = (totalCards: number) => Math.max(1, Math.ceil(totalCards / 2));
 
+  // Check if card is expired (returns true if expired)
+  const isCardExpired = (cardStr: string): boolean => {
+    const parts = cardStr.split('|');
+    if (parts.length < 3) return false;
+    
+    let month = parseInt(parts[1], 10);
+    let year = parseInt(parts[2], 10);
+    
+    if (isNaN(month) || isNaN(year)) return false;
+    
+    // Handle 2-digit year (e.g., 25 -> 2025)
+    if (year < 100) {
+      year += 2000;
+    }
+    
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+    
+    // Card is expired if year is past, or if same year but month is past
+    if (year < currentYear) return true;
+    if (year === currentYear && month < currentMonth) return true;
+    
+    return false;
+  };
+
   const processQueue = async (cards: string[], targetUrl: string, proxyListStr: string, userId: number, telegramId: string, sessionId: string, siteId?: number) => {
     const job = getUserJob(userId);
     job.isRunning = true;
@@ -232,15 +258,61 @@ export async function registerRoutes(
     let chargedCount = 0;
     let rejectedCount = 0;
 
-    const validCards = cards
+    const allCards = cards
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
+    
+    // Separate expired cards from valid cards
+    const expiredCards: string[] = [];
+    const validCards: string[] = [];
+    
+    for (const card of allCards) {
+      if (isCardExpired(card)) {
+        expiredCards.push(card);
+      } else {
+        validCards.push(card);
+      }
+    }
 
     const BATCH_SIZE = getBatchSize(validCards.length);
 
     broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: total } });
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
+    
+    if (expiredCards.length > 0) {
+      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Found ${expiredCards.length} expired cards - skipping check`, type: 'info' } });
+    }
+    
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${validCards.length} cards | ${proxies.length} proxies | Parallel: ${BATCH_SIZE}`, type: 'info' } });
+
+    // Process expired cards first (no checker needed)
+    for (const expiredCard of expiredCards) {
+      if (job.shouldStop) break;
+      
+      const saved = await storage.addResult({
+        card: expiredCard,
+        status: 'dead',
+        message: 'Expired Card',
+        userId: userId,
+        sessionId: sessionId,
+      });
+      
+      broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
+      
+      processedCount++;
+      rejectedCount++;
+      
+      broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
+        active: true, 
+        processed: processedCount, 
+        total: total,
+        charged: chargedCount,
+        rejected: rejectedCount 
+      }});
+      
+      // Update user stats
+      await storage.updateUserStats(telegramId, 0, 1);
+    }
 
     for (let i = 0; i < validCards.length; i += BATCH_SIZE) {
       if (job.shouldStop) {
