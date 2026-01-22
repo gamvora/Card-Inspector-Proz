@@ -305,8 +305,8 @@ export async function registerRoutes(
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
-    // Calculate batch size for parallel processing (third of cards or max 10)
-    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 3), 1), 10);
+    // Calculate batch size for parallel processing (fifth of cards or max 10)
+    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 5), 1), 10);
 
     broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: allCards.length } });
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
@@ -357,7 +357,15 @@ export async function registerRoutes(
             broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
           };
           
-          const result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
+          let result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
+          
+          // Retry once if Invalid Response (use different proxy if available)
+          if (result.message?.includes('Invalid response') && !job.shouldStop) {
+            const retryProxyIndex = (proxyIndex + 1) % (proxies.length || 1);
+            const retryProxy = proxies[retryProxyIndex] || currentProxy;
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Retrying...`, type: 'info' } });
+            result = await checkCardWithPython(cardStr, targetUrl, retryProxy, userId, onLog);
+          }
           
           if (job.shouldStop || result.message?.includes('[STOPPED]')) {
             return { success: false, stopped: true, charged: false };
