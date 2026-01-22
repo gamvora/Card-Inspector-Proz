@@ -219,9 +219,26 @@ export async function registerRoutes(
         
         try {
           const lines = stdout.trim().split('\n');
-          const lastLine = lines[lines.length - 1];
-          const result = JSON.parse(lastLine);
-          resolve(result);
+          // Find the last valid JSON line (search from end)
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (line.startsWith('{') && line.endsWith('}')) {
+              try {
+                const result = JSON.parse(line);
+                if (result.status && result.message) {
+                  resolve(result);
+                  return;
+                }
+              } catch (parseErr) {
+                // Try next line
+              }
+            }
+          }
+          // No valid JSON found
+          resolve({ 
+            status: 'error', 
+            message: '[ERROR] Invalid response from checker' 
+          });
         } catch (e) {
           resolve({ 
             status: 'error', 
@@ -288,8 +305,8 @@ export async function registerRoutes(
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
-    // Calculate batch size for parallel processing (half of cards or max 10)
-    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 2), 1), 10);
+    // Calculate batch size for parallel processing (quarter of cards or max 10)
+    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 4), 1), 10);
 
     broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: allCards.length } });
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
