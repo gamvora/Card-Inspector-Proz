@@ -305,6 +305,12 @@ export async function registerRoutes(
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
+    // Shuffle cards randomly to avoid pattern detection
+    for (let i = allCards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
+    }
+
     // Calculate batch size for parallel processing (fifth of cards or max 10)
     const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 5), 1), 10);
 
@@ -325,10 +331,16 @@ export async function registerRoutes(
       
       broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches} - Processing ${batch.length} cards...`, type: 'info' } });
 
-      // Process batch in parallel
+      // Process batch in parallel with small random delay for anti-detection
       const batchPromises = batch.map(async (cardStr, idx) => {
         if (job.shouldStop) {
           return { success: false, stopped: true, charged: false };
+        }
+
+        // Add small random delay (0.5-1.5s) per card position to avoid pattern detection
+        if (idx > 0) {
+          const delay = 500 + Math.random() * 1000; // 0.5-1.5 seconds
+          await new Promise(r => setTimeout(r, delay));
         }
 
         const proxyIndex = (i + idx) % (proxies.length || 1);
