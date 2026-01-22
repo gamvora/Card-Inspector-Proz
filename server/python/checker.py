@@ -62,7 +62,7 @@ def get_proxy(proxy_string):
         }
     return None
 
-def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=30, proxy=None):
+def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=60, proxy=None):
     global retry_count
     global max_retries
     
@@ -81,13 +81,21 @@ def make_request_with_proxy(url, method='GET', headers=None, json_data=None, dat
             response.raise_for_status()
             return response
             
-        except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ChunkedEncodingError) as e:
             retry_count += 1
-            print(f"[Retry {retry_count}/{max_retries}] Proxy error for {url}: {e}", file=sys.stderr)
-            time.sleep(1)
-            
+            print(f"[Retry {retry_count}/{max_retries}] Network error for {url}: {e}", file=sys.stderr)
+            time.sleep(2)
             if attempt == max_retries - 1:
                 raise Exception(f"Failed after {max_retries} attempts: {e}")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code in [429, 500, 502, 503, 504]:
+                retry_count += 1
+                print(f"[Retry {retry_count}/{max_retries}] HTTP {e.response.status_code} for {url}", file=sys.stderr)
+                time.sleep(3)
+                continue
+            raise e
+        except Exception as e:
+            raise e
 
 def get_address_details(country_code):
     if country_code == 'US':
@@ -242,8 +250,14 @@ def check_card(card_data, site_input, proxy_string=""):
             response = make_request_with_proxy(cart_url, 'GET', headers=headers, 
                                              cookies={'cookie': cookie}, proxy=proxy)
 
-            country_code_match = re.search(r'"supportedCountries":\$"([^"]+)"\$', response.text)
+            country_code_match = re.search(r'"supportedCountries":\["([^"]+)"\]', response.text)
+            if not country_code_match:
+                country_code_match = re.search(r'"countryCode":"([^"]+)"', response.text)
+            
             country_code = country_code_match.group(1) if country_code_match else 'US'
+            if len(country_code) > 2: # Handle cases where it might match a longer string
+                country_code = 'US'
+            
             print(f"[LOG] Country code: {country_code}", file=sys.stderr)
 
             address_details = get_address_details(country_code)
@@ -504,6 +518,10 @@ def check_card(card_data, site_input, proxy_string=""):
 
         data = response.json()
         seller_proposal = data.get("data", {}).get("session", {}).get("negotiate", {}).get("result", {}).get("sellerProposal")
+
+        if not seller_proposal:
+            # Try alternative path for some Shopify versions
+            seller_proposal = data.get("data", {}).get("session", {}).get("purchaseProposal", {}).get("sellerProposal")
 
         if not seller_proposal:
             if retry_count < max_retries:
