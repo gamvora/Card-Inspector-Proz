@@ -850,7 +850,13 @@ export async function registerRoutes(
     const job = getUserJob(req.user!.id);
     if (job.isRunning) return res.status(400).json({ message: 'Job already running' });
     
-    const { cards, siteId } = req.body;
+    const { cards: rawCards, siteId } = req.body;
+    
+    // Normalize cards input - accept both array and newline-separated string
+    const cards = Array.isArray(rawCards) 
+      ? rawCards 
+      : (typeof rawCards === 'string' ? rawCards.split('\n').filter((c: string) => c.trim()) : []);
+    
     const user = await storage.getUserByTelegramId(req.user!.telegramId);
     
     if (!user) {
