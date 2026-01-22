@@ -99,11 +99,13 @@ export function CheckerProvider({ children }: { children: ReactNode }) {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    const interval = setInterval(refreshCredits, 30000);
+    const creditsInterval = setInterval(refreshCredits, 30000);
+    const statusInterval = setInterval(fetchCheckStatus, 5000);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(interval);
+      clearInterval(creditsInterval);
+      clearInterval(statusInterval);
     };
   }, [refreshCredits, fetchCheckStatus]);
 
