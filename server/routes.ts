@@ -127,6 +127,10 @@ export async function registerRoutes(
     shouldStop: boolean;
     sessionId: string | null;
     processes: Set<ReturnType<typeof spawn>>;
+    processed: number;
+    total: number;
+    charged: number;
+    rejected: number;
   }
   
   const userJobs = new Map<number, UserJob>();
@@ -138,6 +142,10 @@ export async function registerRoutes(
         shouldStop: false,
         sessionId: null,
         processes: new Set(),
+        processed: 0,
+        total: 0,
+        charged: 0,
+        rejected: 0,
       });
     }
     return userJobs.get(userId)!;
@@ -248,6 +256,10 @@ export async function registerRoutes(
     job.isRunning = true;
     job.shouldStop = false;
     job.sessionId = sessionId;
+    job.processed = 0;
+    job.total = cards.length;
+    job.charged = 0;
+    job.rejected = 0;
 
     const proxies = proxyListStr.split('\n')
       .map(p => p.trim())
@@ -301,6 +313,8 @@ export async function registerRoutes(
       
       processedCount++;
       rejectedCount++;
+      job.processed = processedCount;
+      job.rejected = rejectedCount;
       
       broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
         active: true, 
@@ -409,7 +423,10 @@ export async function registerRoutes(
       processedCount += actuallyProcessed;
       chargedCount += batchCharged;
       rejectedCount += batchRejected;
-
+      
+      job.processed = processedCount;
+      job.charged = chargedCount;
+      job.rejected = rejectedCount;
       
       if (!job.shouldStop) {
         broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { 
@@ -857,6 +874,20 @@ export async function registerRoutes(
   app.post(api.check.clear.path, authMiddleware, async (req: AuthRequest, res) => {
     await storage.clearResults(req.user!.id);
     res.json({ message: 'Cleared' });
+  });
+  
+  app.get('/api/check/status', authMiddleware, async (req: AuthRequest, res) => {
+    const job = getUserJob(req.user!.id);
+    const results = await storage.getResults(200, req.user!.id);
+    res.json({
+      active: job.isRunning,
+      processed: job.processed,
+      total: job.total,
+      charged: job.charged,
+      rejected: job.rejected,
+      sessionId: job.sessionId,
+      results: results,
+    });
   });
   
   app.get('/api/results', authMiddleware, async (req: AuthRequest, res) => {

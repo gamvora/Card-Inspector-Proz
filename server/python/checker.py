@@ -112,7 +112,7 @@ def check_card(card_data, site_input, proxy_string=""):
     
     parts = card_data.split('|')
     if len(parts) < 4:
-        return {'status': 'error', 'message': '[ERROR] Invalid card format'}
+        return {'status': 'dead', 'message': 'Invalid Card Format'}
     
     cc = parts[0]
     month = parts[1]
@@ -131,7 +131,7 @@ def check_card(card_data, site_input, proxy_string=""):
     
     parsed_url = urlparse(site_input)
     if not parsed_url.scheme or not parsed_url.netloc:
-        return {'status': 'error', 'message': '[ERROR] Invalid URL'}
+        return {'status': 'dead', 'message': 'Invalid Site URL'}
     
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
     domain = parsed_url.hostname
@@ -190,7 +190,7 @@ def check_card(card_data, site_input, proxy_string=""):
         print(f"[LOG] Product: {product_title} | ${min_price}", file=sys.stderr)
 
     except Exception as e:
-        return {'status': 'error', 'message': f'[ERROR] {str(e)}'}
+        return {'status': 'dead', 'message': 'Invalid Response'}
 
     prodid = min_price_product_id
     cart_url = f"{base_url}/cart/{prodid}:1"
@@ -290,7 +290,7 @@ def check_card(card_data, site_input, proxy_string=""):
             continue
 
     else:
-        return {'status': 'error', 'message': '[ERROR] Card Token not found', 'price': min_price}
+        return {'status': 'dead', 'message': 'Invalid Response'}
 
     retry_count = 0
 
@@ -485,7 +485,7 @@ def check_card(card_data, site_input, proxy_string=""):
                 retry_count += 1
                 raise Exception("Retry: Seller proposal not found.")
             else:
-                return {'status': 'error', 'message': '[ERROR] Shipping info is empty', 'price': min_price}
+                return {'status': 'dead', 'message': 'Invalid Response'}
 
         handle = seller_proposal.get("delivery", {}).get("deliveryLines", [{}])[0].get("availableDeliveryStrategies", [{}])[0].get("handle", "")
         if not handle:
@@ -497,7 +497,7 @@ def check_card(card_data, site_input, proxy_string=""):
                 retry_count += 1
                 raise Exception("Retry: Handle is empty")
             else:
-                return {'status': 'error', 'message': '[ERROR] Handle is empty after all attempts', 'price': min_price, 'gateway': gateway_result}
+                return {'status': 'dead', 'message': 'Invalid Response'}
 
         delivery_amount = seller_proposal.get("delivery", {}).get("deliveryLines", [{}])[0].get("availableDeliveryStrategies", [{}])[0].get("amount", {}).get("value", {}).get("amount", "")
         if not delivery_amount:
@@ -505,7 +505,7 @@ def check_card(card_data, site_input, proxy_string=""):
                 retry_count += 1
                 raise Exception("Retry: Delivery amount is empty")
             else:
-                return {'status': 'error', 'message': '[ERROR] Delivery rates are empty', 'price': min_price}
+                return {'status': 'dead', 'message': 'Invalid Response'}
 
         tax = seller_proposal.get("tax", {}).get("totalTaxAmount", {}).get("value", {}).get("amount", "")
         if not tax:
@@ -517,14 +517,14 @@ def check_card(card_data, site_input, proxy_string=""):
                 retry_count += 1
                 raise Exception("Retry: Tax is empty")
             else:
-                return {'status': 'error', 'message': '[ERROR] Tax is empty after all attempts', 'price': min_price, 'gateway': gateway_result}
+                return {'status': 'dead', 'message': 'Invalid Response'}
 
         total_amount = seller_proposal.get("runningTotal", {}).get("value", {}).get("amount", "")
 
         print(f"[LOG] Proposal: Handle={handle[:20]}... Tax=${tax} Total=${total_amount}", file=sys.stderr)
 
     except Exception as e:
-        return {'status': 'error', 'message': f'[ERROR] Proposal step failed: {str(e)}'}
+        return {'status': 'dead', 'message': 'Invalid Response'}
 
     receipt_id = None
     try:
@@ -781,7 +781,7 @@ def check_card(card_data, site_input, proxy_string=""):
                     raise Exception("Receipt ID is empty")
 
     except Exception as e:
-        return {'status': 'error', 'message': f'[ERROR] {str(e)}', 'price': total_amount if 'total_amount' in locals() else min_price}
+        return {'status': 'dead', 'message': 'Invalid Response'}
 
     if receipt_id:
         purl = f"{base_url}/checkouts/unstable/graphql?operationName=PollForReceipt"
@@ -849,15 +849,15 @@ def check_card(card_data, site_input, proxy_string=""):
                     return {'status': 'dead', 'message': f'[DEAD] {err} | ${total_amount}'}
 
                 else:
-                    return {'status': 'unknown', 'message': f'[UNKNOWN] Response is Empty! | ${total_amount}'}
+                    return {'status': 'dead', 'message': 'Invalid Response'}
                     
             except Exception as e:
-                return {'status': 'error', 'message': f'[ERROR] {str(e)}', 'price': total_amount}
+                return {'status': 'dead', 'message': 'Invalid Response'}
 
         except Exception as e:
-            return {'status': 'error', 'message': f'[ERROR] {str(e)}', 'price': total_amount}
+            return {'status': 'dead', 'message': 'Invalid Response'}
     
-    return {'status': 'error', 'message': '[ERROR] No receipt ID'}
+    return {'status': 'dead', 'message': 'Invalid Response'}
 
 
 if __name__ == "__main__":

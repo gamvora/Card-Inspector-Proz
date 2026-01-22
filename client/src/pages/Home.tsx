@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useStartCheck, useStopCheck, useClearResults, useCheckerSocket } from "@/hooks/use-checker";
+import { useStartCheck, useStopCheck } from "@/hooks/use-checker";
+import { useCheckerContext } from "@/lib/checker-context";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { 
@@ -48,7 +49,7 @@ export default function Home() {
   const { user, refreshUser } = useAuth();
   const startCheck = useStartCheck();
   const stopCheck = useStopCheck();
-  const { results, stats, clearLocalResults } = useCheckerSocket();
+  const { results, stats, clearLocalResults, fetchCheckStatus } = useCheckerContext();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +87,10 @@ export default function Home() {
       }
     }
   }, [sites]);
+
+  useEffect(() => {
+    fetchCheckStatus();
+  }, [fetchCheckStatus]);
 
   useEffect(() => {
     if (stats.charged !== undefined || stats.rejected !== undefined) {
