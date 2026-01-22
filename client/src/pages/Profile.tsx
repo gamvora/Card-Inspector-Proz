@@ -36,6 +36,7 @@ interface LeaderboardUser {
   username: string | null;
   firstName: string | null;
   lastName: string | null;
+  photoUrl: string | null;
   totalCharged: number;
   rank: number;
 }
@@ -45,6 +46,7 @@ interface OnlineUser {
   userId: number;
   username: string | null;
   firstName: string | null;
+  photoUrl: string | null;
 }
 
 export default function Profile() {
@@ -152,6 +154,7 @@ export default function Profile() {
                   >
                     <div className="relative">
                       <Avatar className="w-10 h-10 border-2 border-background">
+                        <AvatarImage src={onlineUser.photoUrl || undefined} alt={onlineUser.firstName || "User"} />
                         <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/20 text-sm font-bold">
                           {onlineUser.firstName?.[0] || onlineUser.username?.[0] || "U"}
                         </AvatarFallback>
@@ -214,6 +217,7 @@ export default function Profile() {
                     #{leader.rank}
                   </div>
                   <Avatar className="w-10 h-10 border-2 border-background">
+                    <AvatarImage src={leader.photoUrl || undefined} alt={leader.firstName || "User"} />
                     <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold">
                       {leader.firstName?.[0] || leader.username?.[0] || "U"}
                     </AvatarFallback>

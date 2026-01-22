@@ -100,7 +100,7 @@ export async function registerRoutes(
   const onlineUsersCache = new Map<string, { telegramId: string; userId: number; lastSeen: Date }>();
   
   const getOnlineUsers = async () => {
-    const onlineList: Array<{ telegramId: string; userId: number; username: string | null; firstName: string | null }> = [];
+    const onlineList: Array<{ telegramId: string; userId: number; username: string | null; firstName: string | null; photoUrl: string | null }> = [];
     const seenIds = new Set<string>();
     
     const clients = Array.from(wss.clients) as UserWebSocket[];
@@ -114,6 +114,7 @@ export async function registerRoutes(
             userId: user.id,
             username: user.username,
             firstName: user.firstName,
+            photoUrl: user.photoUrl,
           });
         }
       }
@@ -523,31 +524,8 @@ export async function registerRoutes(
     }
   });
 
-  // Dev login for testing without Telegram
-  app.post('/api/auth/dev-login', async (req, res) => {
-    const devTelegramId = 'dev-user-123';
-    
-    // Use getOrCreateUser for idempotent user creation
-    const user = await storage.getOrCreateUser({
-      telegramId: devTelegramId,
-      username: 'dev_tester',
-      firstName: 'Dev',
-      lastName: 'Tester',
-      credits: 0,
-      totalCharged: 0,
-      totalRejected: 0,
-      isAdmin: false,
-    });
-    
-    // Generate JWT token for dev user
-    const token = jwt.sign(
-      { telegramId: user.telegramId, userId: user.id },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-    
-    res.json({ user, token });
-  });
+  // Dev login endpoint removed - only Telegram authentication is supported
+  // This prevents dev_tester from being created in production/testing environments
 
   app.get(api.auth.me.path, authMiddleware, async (req: AuthRequest, res) => {
     const user = await storage.getUserByTelegramId(req.user!.telegramId);

@@ -149,24 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Development mode: create a demo user for testing
-      if (import.meta.env.DEV || !tg?.initData) {
-        try {
-          const res = await fetch('/api/auth/dev-login', { method: 'POST' });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.user && data.token) {
-              setUser(data.user);
-              setTelegramId(data.user.telegramId);
-              setToken(data.token);
-              localStorage.setItem('telegramId', data.user.telegramId);
-              localStorage.setItem('authToken', data.token);
-            }
-          }
-        } catch (e) {
-          console.log('Dev login not available');
-        }
-      }
+      // No Telegram init data and no stored session - user needs to open via Telegram
+      // Dev login removed to prevent creating test users
 
       setIsLoading(false);
     };

@@ -67,13 +67,14 @@ export class TelegramService {
     const telegramId = telegramUser.id.toString();
     
     // Use getOrCreateUser for idempotent user creation (prevents duplicates)
+    // New users get 80 free credits on first registration
     let user = await storage.getOrCreateUser({
       telegramId,
       username: telegramUser.username || null,
       firstName: telegramUser.first_name,
       lastName: telegramUser.last_name || null,
       photoUrl: telegramUser.photo_url || null,
-      credits: telegramId === ADMIN_ID ? 999999 : 0,
+      credits: telegramId === ADMIN_ID ? 999999 : 80,
       totalCharged: 0,
       totalRejected: 0,
       isAdmin: telegramId === ADMIN_ID,

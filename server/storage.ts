@@ -68,7 +68,7 @@ export interface IStorage {
 
   // Global Stats & Leaderboard
   getGlobalStats(): Promise<{ totalCards: number; totalLive: number; totalDead: number; hitRate: number }>;
-  getLeaderboard(limit?: number): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; totalCharged: number; rank: number }>>;
+  getLeaderboard(limit?: number): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; photoUrl: string | null; totalCharged: number; rank: number }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -306,12 +306,13 @@ export class DatabaseStorage implements IStorage {
     return { totalCards, totalLive, totalDead, hitRate };
   }
 
-  async getLeaderboard(limit = 10): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; totalCharged: number; rank: number }>> {
+  async getLeaderboard(limit = 10): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; photoUrl: string | null; totalCharged: number; rank: number }>> {
     const topUsers = await db.select({
       userId: users.id,
       username: users.username,
       firstName: users.firstName,
       lastName: users.lastName,
+      photoUrl: users.photoUrl,
       totalCharged: users.totalCharged,
     }).from(users).orderBy(desc(users.totalCharged)).limit(limit);
     
