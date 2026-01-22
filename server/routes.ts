@@ -189,7 +189,7 @@ export async function registerRoutes(
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
       
       const pythonProcess = spawn('python', [scriptPath, card, siteUrl, proxy], {
-        timeout: 120000
+        timeout: 60000
       });
       
       job.processes.add(pythonProcess);
@@ -305,8 +305,8 @@ export async function registerRoutes(
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
-    // Calculate batch size for parallel processing (quarter of cards or max 10)
-    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 4), 1), 10);
+    // Calculate batch size for parallel processing (third of cards or max 10)
+    const BATCH_SIZE = Math.min(Math.max(Math.ceil(allCards.length / 3), 1), 10);
 
     broadcastToUser(userId, { type: WS_EVENTS.STATUS_UPDATE, payload: { active: true, processed: 0, total: allCards.length } });
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
