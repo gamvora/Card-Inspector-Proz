@@ -418,7 +418,7 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl shadow-2xl border border-slate-700/50 overflow-hidden"
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl shadow-2xl border border-slate-700/50 overflow-hidden z-[10000]"
         >
           <div className="p-5">
             <div className="flex items-center justify-between mb-4">
@@ -427,7 +427,7 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
                   <HelpCircle className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm font-medium text-slate-400">
-                  الخطوة {currentStep + 1} من {tutorialSteps.length}
+                  Step {currentStep + 1} of {tutorialSteps.length}
                 </span>
               </div>
               <Button
@@ -446,10 +446,10 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
               {step.animation}
             </div>
 
-            <h3 className="text-xl font-bold text-white mb-2" dir="rtl">
+            <h3 className="text-xl font-bold text-white mb-2 text-center">
               {step.title}
             </h3>
-            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line mb-4" dir="rtl">
+            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line mb-4 text-center">
               {step.description}
             </p>
 
@@ -471,7 +471,7 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
                 className="text-slate-400 hover:text-white"
                 data-testid="button-skip-tutorial"
               >
-                تخطي
+                Skip
               </Button>
               
               <div className="flex items-center gap-2">
@@ -484,7 +484,7 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
                   aria-label="Previous step"
                   data-testid="button-prev-step"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronLeft className="w-5 h-5" />
                 </Button>
                 <Button
                   onClick={handleNext}
@@ -492,8 +492,8 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
                   aria-label={currentStep === tutorialSteps.length - 1 ? "Finish tutorial" : "Next step"}
                   data-testid="button-next-step"
                 >
-                  {currentStep === tutorialSteps.length - 1 ? "إنهاء" : "التالي"}
-                  {currentStep < tutorialSteps.length - 1 && <ChevronLeft className="w-4 h-4 mr-1" />}
+                  {currentStep === tutorialSteps.length - 1 ? "Finish" : "Next"}
+                  {currentStep < tutorialSteps.length - 1 && <ChevronRight className="w-4 h-4 ml-1" />}
                 </Button>
               </div>
             </div>

@@ -20,9 +20,16 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
     if (user && !hasCheckedInitial) {
       setHasCheckedInitial(true);
       if (!user.hasSeenTutorial) {
-        setTimeout(() => {
-          setShowTutorial(true);
-        }, 1500);
+        const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+        const now = new Date();
+        const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+        const isNewUser = createdAt && createdAt > fiveMinutesAgo;
+        
+        if (isNewUser) {
+          setTimeout(() => {
+            setShowTutorial(true);
+          }, 1500);
+        }
       }
     }
   }, [user, hasCheckedInitial]);
@@ -31,9 +38,15 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
     setShowTutorial(true);
   }, []);
 
-  const closeTutorial = useCallback(() => {
+  const closeTutorial = useCallback(async () => {
     setShowTutorial(false);
-  }, []);
+    try {
+      await authFetch('/api/tutorial/complete', { method: 'POST' });
+      await refreshUser();
+    } catch (error) {
+      console.error('Failed to mark tutorial as complete:', error);
+    }
+  }, [refreshUser]);
 
   const completeTutorial = useCallback(async () => {
     setShowTutorial(false);

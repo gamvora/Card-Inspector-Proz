@@ -13,6 +13,7 @@ interface User {
   totalRejected: number;
   isAdmin: boolean;
   hasSeenTutorial: boolean;
+  createdAt: string | null;
 }
 
 interface AuthContextType {
