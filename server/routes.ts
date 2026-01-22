@@ -372,10 +372,13 @@ export async function registerRoutes(
           let result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
           
           // Retry once if Invalid Response (use different proxy if available)
-          if (result.message?.includes('Invalid response') && !job.shouldStop) {
+          if (result.message === 'Invalid Response' && !job.shouldStop) {
             const retryProxyIndex = (proxyIndex + 1) % (proxies.length || 1);
             const retryProxy = proxies[retryProxyIndex] || currentProxy;
-            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Retrying...`, type: 'info' } });
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Invalid Response - Retrying with new proxy...`, type: 'info' } });
+            
+            // Wait 2 seconds before retry to let proxy/site settle
+            await new Promise(r => setTimeout(r, 2000));
             result = await checkCardWithPython(cardStr, targetUrl, retryProxy, userId, onLog);
           }
           
