@@ -189,7 +189,7 @@ export async function registerRoutes(
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
       
       const pythonProcess = spawn('python', [scriptPath, card, siteUrl, proxy], {
-        timeout: 60000
+        timeout: 90000
       });
       
       job.processes.add(pythonProcess);
@@ -218,6 +218,12 @@ export async function registerRoutes(
         }
         
         try {
+          // Handle empty output
+          if (!stdout.trim()) {
+            resolve({ status: 'error', message: 'Invalid Response' });
+            return;
+          }
+          
           const lines = stdout.trim().split('\n');
           // Find the last valid JSON line (search from end)
           for (let i = lines.length - 1; i >= 0; i--) {
@@ -235,21 +241,15 @@ export async function registerRoutes(
             }
           }
           // No valid JSON found
-          resolve({ 
-            status: 'error', 
-            message: '[ERROR] Invalid response from checker' 
-          });
+          resolve({ status: 'error', message: 'Invalid Response' });
         } catch (e) {
-          resolve({ 
-            status: 'error', 
-            message: '[ERROR] Python script failed' 
-          });
+          resolve({ status: 'error', message: 'Invalid Response' });
         }
       });
       
       pythonProcess.on('error', (err) => {
         job.processes.delete(pythonProcess);
-        resolve({ status: 'error', message: `[ERROR] Process: ${err.message}` });
+        resolve({ status: 'error', message: 'Invalid Response' });
       });
     });
   };
