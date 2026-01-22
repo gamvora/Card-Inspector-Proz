@@ -48,18 +48,18 @@ export default function Loading({ onComplete }: LoadingProps) {
           transition={{ delay: 0.2, duration: 0.5 }}
           className="relative mb-8"
         >
-          <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl shadow-purple-500/20 flex items-center justify-center overflow-hidden border-4 border-white dark:border-slate-700">
-            <motion.div
-              animate={{ 
-                boxShadow: [
-                  '0 0 20px rgba(168, 85, 247, 0.4)',
-                  '0 0 40px rgba(168, 85, 247, 0.6)',
-                  '0 0 20px rgba(168, 85, 247, 0.4)'
-                ]
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center"
-            >
+          <motion.div
+            animate={{ 
+              boxShadow: [
+                '0 0 30px rgba(168, 85, 247, 0.5)',
+                '0 0 60px rgba(168, 85, 247, 0.7)',
+                '0 0 30px rgba(168, 85, 247, 0.5)'
+              ]
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="w-32 h-32 rounded-3xl bg-gradient-to-br from-purple-600 via-violet-600 to-indigo-700 p-1 shadow-2xl shadow-purple-500/30"
+          >
+            <div className="w-full h-full rounded-[1.25rem] bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center overflow-hidden">
               {user?.photoUrl ? (
                 <img 
                   src={user.photoUrl} 
@@ -68,20 +68,30 @@ export default function Loading({ onComplete }: LoadingProps) {
                   data-testid="img-user-avatar"
                 />
               ) : (
-                <span className="text-4xl font-bold text-white">
-                  {user?.firstName?.charAt(0) || 'N'}
-                </span>
+                <div className="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center">
+                  <span className="text-5xl font-bold text-white drop-shadow-lg">
+                    {user?.firstName?.charAt(0)?.toUpperCase() || 'N'}
+                  </span>
+                </div>
               )}
-            </motion.div>
-          </div>
+            </div>
+          </motion.div>
           
           <motion.div
             animate={{ 
-              scale: [1, 1.2, 1],
-              opacity: [0.5, 1, 0.5]
+              scale: [1, 1.3, 1],
+              opacity: [0.4, 0.8, 0.4]
             }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute -inset-3 rounded-[2rem] bg-gradient-to-r from-purple-500/20 via-transparent to-blue-500/20 -z-10 blur-xl"
+            transition={{ duration: 2.5, repeat: Infinity }}
+            className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-r from-purple-500/30 via-violet-500/20 to-blue-500/30 -z-10 blur-2xl"
+          />
+          
+          <motion.div
+            animate={{ 
+              rotate: [0, 360]
+            }}
+            transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+            className="absolute -inset-2 rounded-[2rem] border-2 border-dashed border-purple-400/20 -z-10"
           />
         </motion.div>
 
