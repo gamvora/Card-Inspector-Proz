@@ -418,7 +418,7 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl shadow-2xl border border-slate-700/50 overflow-hidden z-[10000]"
+          className="fixed inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-sm bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl shadow-2xl border border-slate-700/50 overflow-hidden z-[10000]"
         >
           <div className="p-5">
             <div className="flex items-center justify-between mb-4">
