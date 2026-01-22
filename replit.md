@@ -36,8 +36,11 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 ### Proxy Management
 - Individual proxy lists per user
 - Proxy format validation (host:port:user:pass)
+- **Real proxy testing before adding**: Tests actual connection, measures speed, checks IP
+- **Automatic rotation detection**: Makes 2 requests to detect if proxy IP changes (rotating vs static)
 - Type detection from hostname keywords (Rotating/Datacenter/Residential/Static)
 - Clear all proxies functionality
+- Proxy must pass connection test before being saved
 
 ### Enhanced Statistics
 - Total charged/rejected cards tracked per user

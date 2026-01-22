@@ -71,6 +71,10 @@ interface ProxyTestResult {
   hasAuth?: boolean;
   status?: string;
   error?: string;
+  ip1?: string;
+  ip2?: string;
+  isRotating?: boolean;
+  speed?: number;
 }
 
 export default function Settings() {
@@ -178,21 +182,24 @@ export default function Settings() {
       setProxyTestResult(data);
       setTestingProxy(null);
       if (data.valid) {
+        const speedLabel = data.speed ? `${data.speed}ms` : 'N/A';
+        const rotatingLabel = data.isRotating ? 'Rotating' : 'Static';
         toast({ 
-          title: 'Format Valid!', 
-          description: `Type: ${data.type || 'Static'}`,
+          title: 'Proxy Working!', 
+          description: `IP: ${data.ip1} | Speed: ${speedLabel} | ${rotatingLabel}`,
           soundType: 'success' 
         });
       } else {
         toast({ 
-          title: 'Invalid Format', 
-          description: data.error || 'Check proxy format',
+          title: 'Proxy Failed', 
+          description: data.error || 'Connection failed',
           variant: 'destructive' 
         });
       }
     },
     onError: () => {
       setTestingProxy(null);
+      setProxyTestResult(null);
       toast({ title: 'Test failed', variant: 'destructive' });
     },
   });
@@ -212,11 +219,22 @@ export default function Settings() {
       return;
     }
 
-    if (proxyList.length === 1) {
-      await testProxyMutation.mutateAsync(proxyList[0]);
+    // Test first proxy before saving
+    try {
+      const testResult = await testProxyMutation.mutateAsync(proxyList[0]);
+      if (!testResult.valid) {
+        toast({ 
+          title: 'Proxy not working', 
+          description: 'Test the proxy first and make sure it works',
+          variant: 'destructive' 
+        });
+        return;
+      }
+      // Only add if test passed
+      addProxiesMutation.mutate(proxyList);
+    } catch {
+      toast({ title: 'Proxy test failed', variant: 'destructive' });
     }
-
-    addProxiesMutation.mutate(proxyList);
   };
 
   const handleTestFirstProxy = () => {
@@ -510,18 +528,42 @@ export default function Settings() {
                     </div>
 
                     {proxyTestResult.valid && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex items-center gap-2">
-                          <Wifi className="w-4 h-4 text-emerald-500" />
-                          <span className="text-sm">
-                            <span className="font-bold text-emerald-600">Format Valid</span>
-                          </span>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-blue-500" />
+                            <span className="text-sm">
+                              <span className="text-muted-foreground">IP: </span>
+                              <span className="font-bold text-blue-600">{proxyTestResult.ip1}</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-amber-500" />
+                            <span className="text-sm">
+                              <span className="text-muted-foreground">Speed: </span>
+                              <span className="font-bold text-amber-600">{proxyTestResult.speed}ms</span>
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-indigo-500" />
-                          <span className="text-sm">
-                            <span className="font-medium text-indigo-600">{proxyTestResult.type}</span>
-                          </span>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center gap-2">
+                            <Radio className="w-4 h-4 text-purple-500" />
+                            <span className="text-sm">
+                              <span className="text-muted-foreground">Type: </span>
+                              <span className={`font-bold ${proxyTestResult.isRotating ? 'text-purple-600' : 'text-slate-600'}`}>
+                                {proxyTestResult.isRotating ? 'Rotating' : 'Static'}
+                              </span>
+                            </span>
+                          </div>
+                          {proxyTestResult.isRotating && proxyTestResult.ip2 && (
+                            <div className="flex items-center gap-2">
+                              <Wifi className="w-4 h-4 text-emerald-500" />
+                              <span className="text-sm">
+                                <span className="text-muted-foreground">IP2: </span>
+                                <span className="font-bold text-emerald-600">{proxyTestResult.ip2}</span>
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

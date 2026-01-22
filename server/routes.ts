@@ -625,12 +625,12 @@ export async function registerRoutes(
     try {
       const { proxy } = req.body;
       if (!proxy) {
-        return res.status(400).json({ error: 'Proxy required' });
+        return res.status(400).json({ error: 'Proxy required', valid: false });
       }
 
       const parts = proxy.split(':');
       if (parts.length < 2) {
-        return res.status(400).json({ error: 'Invalid proxy format', valid: false });
+        return res.status(400).json({ error: 'Invalid proxy format (host:port:user:pass)', valid: false });
       }
 
       const host = parts[0];
@@ -642,17 +642,61 @@ export async function registerRoutes(
         return res.json({
           valid: false,
           proxy,
-          type: 'Unknown',
-          hasAuth: !!(username && password),
-          status: 'invalid',
           error: 'Invalid port number'
         });
       }
 
-      const isRotating = host.includes('rotating') || host.includes('rotate') || 
-                        host.includes('residential') || host.includes('mobile') ||
-                        host.includes('backconnect');
+      // Build proxy URL for curl
+      let proxyUrl = `http://${host}:${port}`;
+      if (username && password) {
+        proxyUrl = `http://${username}:${password}@${host}:${port}`;
+      }
+
+      // Test proxy with 2 requests to check IP and rotation
+      const testProxyConnection = (): Promise<{ ip: string; time: number } | null> => {
+        return new Promise((resolve) => {
+          const startTime = Date.now();
+          const { exec } = require('child_process');
+          const cmd = `curl -x "${proxyUrl}" -s --connect-timeout 10 --max-time 15 "https://api.ipify.org?format=json"`;
+          
+          exec(cmd, { timeout: 20000 }, (error: any, stdout: string) => {
+            if (error) {
+              resolve(null);
+              return;
+            }
+            try {
+              const data = JSON.parse(stdout.trim());
+              resolve({ ip: data.ip, time: Date.now() - startTime });
+            } catch {
+              resolve(null);
+            }
+          });
+        });
+      };
+
+      // First request
+      const result1 = await testProxyConnection();
+      if (!result1) {
+        return res.json({
+          valid: false,
+          proxy,
+          error: 'Connection failed - proxy not working',
+          ip: null,
+          speed: null,
+          isRotating: false
+        });
+      }
+
+      // Small delay before second request
+      await new Promise(r => setTimeout(r, 500));
+
+      // Second request to check if IP changes (rotating)
+      const result2 = await testProxyConnection();
       
+      const isRotating = result2 ? result1.ip !== result2.ip : false;
+      const avgSpeed = result2 ? Math.round((result1.time + result2.time) / 2) : result1.time;
+
+      // Determine proxy type
       let proxyType = 'Static';
       if (isRotating) {
         proxyType = 'Rotating';
@@ -667,7 +711,11 @@ export async function registerRoutes(
         proxy,
         type: proxyType,
         hasAuth: !!(username && password),
-        status: 'format_valid'
+        ip1: result1.ip,
+        ip2: result2?.ip || result1.ip,
+        isRotating,
+        speed: avgSpeed,
+        status: 'working'
       });
     } catch (e: any) {
       res.status(400).json({ error: e.message, valid: false });
