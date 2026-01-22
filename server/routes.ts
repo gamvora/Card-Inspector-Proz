@@ -787,6 +787,16 @@ export async function registerRoutes(
     }
   });
 
+  // === Tutorial Routes ===
+  app.post('/api/tutorial/complete', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const updatedUser = await storage.markTutorialSeen(req.user!.telegramId);
+      res.json({ success: true, user: updatedUser });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
   // === Credits Routes ===
   app.get(api.credits.balance.path, authMiddleware, async (req: AuthRequest, res) => {
     const user = await storage.getUserByTelegramId(req.user!.telegramId);

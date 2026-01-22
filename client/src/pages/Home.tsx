@@ -31,7 +31,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth, authFetch } from "@/lib/auth";
+import { useTutorial } from "@/lib/tutorial-context";
 import { motion, AnimatePresence } from "framer-motion";
+import { HelpCircle } from "lucide-react";
 
 interface Site {
   id: number;
@@ -50,6 +52,7 @@ interface CheckResult {
 
 export default function Home() {
   const { user, refreshUser } = useAuth();
+  const { startTutorial } = useTutorial();
   const startCheck = useStartCheck();
   const stopCheck = useStopCheck();
   const { results, stats, clearLocalResults, fetchCheckStatus, cardsInput, setCardsInput } = useCheckerContext();
@@ -312,7 +315,7 @@ export default function Home() {
         className="hidden"
       />
       
-      <header className="px-4 pt-4 pb-2">
+      <header className="px-4 pt-4 pb-2" data-tutorial="header">
         <motion.div 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -356,6 +359,15 @@ export default function Home() {
               </motion.div>
             </div>
             
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={startTutorial}
+              className="p-2 rounded-full bg-purple-500/10 border border-purple-500/20"
+              data-testid="button-tutorial"
+            >
+              <HelpCircle className="w-4 h-4 text-purple-500" />
+            </motion.button>
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
@@ -428,7 +440,7 @@ export default function Home() {
             filter: 'brightness(1.2) saturate(1.3)',
           }} />
           
-          <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden relative">
+          <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden relative" data-tutorial="cards-input">
             {/* X button to clear all cards */}
             <AnimatePresence>
               {cardsInputState.trim() && !stats.active && (
@@ -524,6 +536,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
           className="flex items-center justify-center gap-3"
+          data-tutorial="site-selector"
         >
           <Button
             variant="ghost"
@@ -586,6 +599,7 @@ export default function Home() {
             disabled={stats.active || startCheck.isPending || sites.length === 0}
             className="flex-1 h-12 rounded-xl font-semibold text-base bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/20 border-0"
             data-testid="button-start"
+            data-tutorial="start-button"
           >
             {stats.active ? (
               <>
@@ -630,6 +644,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
           className="flex gap-2 p-1.5 bg-muted rounded-2xl"
+          data-tutorial="results"
         >
           <motion.button
             whileTap={{ scale: 0.98 }}
@@ -782,6 +797,7 @@ export default function Home() {
               whileTap={{ scale: 0.95 }}
               className="flex flex-col items-center gap-1.5 py-1 px-8"
               data-testid="nav-settings"
+              data-tutorial="settings-nav"
             >
               <div className="p-2">
                 <Settings className="w-5 h-5 text-muted-foreground" />

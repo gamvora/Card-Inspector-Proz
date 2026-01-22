@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/ThemeProvider";
 import { CheckerProvider } from "@/lib/checker-context";
+import { TutorialProvider } from "@/lib/tutorial-context";
 import { useState, useEffect } from "react";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
@@ -44,12 +45,14 @@ function App() {
       <AuthProvider>
         <CheckerProvider>
           <ThemeProvider>
-            <TooltipProvider>
-              <div className="min-h-screen bg-background text-foreground">
-                <AppContent />
-                <Toaster />
-              </div>
-            </TooltipProvider>
+            <TutorialProvider>
+              <TooltipProvider>
+                <div className="min-h-screen bg-background text-foreground">
+                  <AppContent />
+                  <Toaster />
+                </div>
+              </TooltipProvider>
+            </TutorialProvider>
           </ThemeProvider>
         </CheckerProvider>
       </AuthProvider>

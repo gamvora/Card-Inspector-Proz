@@ -31,6 +31,7 @@ export interface IStorage {
   updateUser(telegramId: string, data: Partial<InsertUser>): Promise<User | undefined>;
   updateUserCredits(telegramId: string, amount: number): Promise<User | undefined>;
   updateUserStats(telegramId: string, charged: number, rejected: number): Promise<void>;
+  markTutorialSeen(telegramId: string): Promise<User | undefined>;
 
   // Sites
   getUserSites(userId: number): Promise<Site[]>;
@@ -155,6 +156,15 @@ export class DatabaseStorage implements IStorage {
         lastActiveAt: new Date(),
       })
       .where(eq(users.telegramId, telegramId));
+  }
+
+  async markTutorialSeen(telegramId: string): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set({ hasSeenTutorial: true, lastActiveAt: new Date() })
+      .where(eq(users.telegramId, telegramId))
+      .returning();
+    return updated;
   }
 
   // Sites

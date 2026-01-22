@@ -16,6 +16,7 @@ export const users = pgTable("users", {
   totalCharged: integer("total_charged").default(0).notNull(),
   totalRejected: integer("total_rejected").default(0).notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
+  hasSeenTutorial: boolean("has_seen_tutorial").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   lastActiveAt: timestamp("last_active_at").defaultNow(),
 });
