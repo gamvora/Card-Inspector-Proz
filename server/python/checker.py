@@ -62,7 +62,7 @@ def get_proxy(proxy_string):
         }
     return None
 
-def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=15, proxy=None):
+def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=30, proxy=None):
     global retry_count
     global max_retries
     
