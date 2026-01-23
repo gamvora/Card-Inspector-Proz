@@ -41,3 +41,6 @@ waitForPort = 5000
 [userenv]
 
 [userenv.shared]
+
+[agent]
+integrations = ["spotify:1.0.0"]

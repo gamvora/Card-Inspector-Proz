@@ -10,6 +10,7 @@ import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
 import { handleBotUpdate, initBot, sendChargedCardNotification } from "./services/telegramBot";
 import { setWss } from "./services/wsManager";
+import { searchTracks as spotifySearch } from "./services/spotify";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
 
@@ -1004,6 +1005,25 @@ export async function registerRoutes(
       const onlineUsers = await getOnlineUsers();
       res.json(onlineUsers);
     } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Spotify Search API
+  app.get('/api/spotify/search', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        return res.status(400).json({ error: 'Search query required' });
+      }
+
+      console.log('[Spotify] Searching for:', query);
+      const results = await spotifySearch(query, 8);
+      console.log('[Spotify] Found', results.length, 'tracks');
+      
+      res.json({ results });
+    } catch (e: any) {
+      console.error('[Spotify] Search error:', e.message);
       res.status(500).json({ error: e.message });
     }
   });
