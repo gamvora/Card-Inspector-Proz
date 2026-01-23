@@ -21,7 +21,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (initData: string) => Promise<boolean>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<boolean>;
   telegramId: string | null;
   token: string | null;
 }
@@ -90,10 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshUser = async () => {
+  const refreshUser = async (): Promise<boolean> => {
     const storedToken = localStorage.getItem('authToken');
     const storedTelegramId = localStorage.getItem('telegramId');
-    if (!storedToken && !storedTelegramId) return;
+    if (!storedToken && !storedTelegramId) return false;
 
     try {
       const headers: Record<string, string> = {};
@@ -104,14 +104,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       const response = await fetch('/api/auth/me', { headers });
+      
+      if (response.status === 401) {
+        // Token expired or invalid - clear it
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('telegramId');
+        setToken(null);
+        setTelegramId(null);
+        return false;
+      }
+      
       const data = await response.json();
       if (data.user) {
         setUser(data.user);
         setTelegramId(data.user.telegramId);
         if (storedToken) setToken(storedToken);
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Refresh user error:', error);
+      return false;
     }
   };
 
@@ -119,18 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initAuth = async () => {
       setIsLoading(true);
       
-      // Check for stored token first
-      const storedToken = localStorage.getItem('authToken');
-      if (storedToken) {
-        setToken(storedToken);
-        await refreshUser();
-        if (user) {
-          setIsLoading(false);
-          return;
-        }
-      }
-      
-      // Check for Telegram WebApp
+      // Always try Telegram WebApp first if available
       const tg = window.Telegram?.WebApp;
       if (tg && tg.initData) {
         tg.ready();
@@ -142,18 +144,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
       }
-
-      // Check localStorage for existing session
-      const storedTelegramId = localStorage.getItem('telegramId');
-      if (storedTelegramId) {
-        await refreshUser();
-        setIsLoading(false);
-        return;
+      
+      // Try stored token
+      const storedToken = localStorage.getItem('authToken');
+      if (storedToken) {
+        setToken(storedToken);
+        const refreshed = await refreshUser();
+        if (refreshed) {
+          setIsLoading(false);
+          return;
+        }
+        // Token was invalid, it's been cleared
       }
 
-      // No Telegram init data and no stored session - user needs to open via Telegram
-      // Dev login removed to prevent creating test users
-
+      // No valid session
       setIsLoading(false);
     };
 
