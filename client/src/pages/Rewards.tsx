@@ -38,11 +38,12 @@ export default function Rewards() {
   const [referralInput, setReferralInput] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const { data: spinStatus, refetch: refetchSpin } = useQuery<{ canSpin: boolean; lastSpin?: any }>({
+  const { data: spinStatus, isLoading: spinLoading, refetch: refetchSpin } = useQuery<{ canSpin: boolean; lastSpin?: any }>({
     queryKey: ["/api/spin/status"],
+    retry: 2,
   });
 
-  const { data: streakStatus, refetch: refetchStreak } = useQuery<{ 
+  const { data: streakStatus, isLoading: streakLoading, refetch: refetchStreak } = useQuery<{ 
     currentStreak: number; 
     longestStreak: number; 
     lastClaimDate?: string;
@@ -50,14 +51,17 @@ export default function Rewards() {
     canClaim: boolean;
   }>({
     queryKey: ["/api/streak/status"],
+    retry: 2,
   });
 
-  const { data: referralCode } = useQuery<{ code: string }>({
+  const { data: referralCode, isLoading: referralLoading } = useQuery<{ code: string }>({
     queryKey: ["/api/referral/code"],
+    retry: 2,
   });
 
   const { data: referralStats } = useQuery<{ count: number; totalCredits: number; referrals: any[] }>({
     queryKey: ["/api/referral/stats"],
+    retry: 2,
   });
 
   const spinMutation = useMutation({
@@ -196,8 +200,9 @@ export default function Rewards() {
                 <SpinWheel
                   prizes={SPIN_PRIZES}
                   onSpin={handleSpin}
-                  canSpin={spinStatus?.canSpin ?? false}
+                  canSpin={spinLoading ? undefined : spinStatus?.canSpin ?? true}
                   isSpinning={spinMutation.isPending}
+                  isLoading={spinLoading}
                 />
                 
                 <div className="mt-4 text-center text-sm text-muted-foreground">
@@ -296,7 +301,13 @@ export default function Rewards() {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
                   <div className="flex-1 bg-muted rounded-lg px-4 py-3 font-mono text-lg text-center">
-                    {referralCode?.code || "Loading..."}
+                    {referralLoading ? (
+                      <span className="text-muted-foreground animate-pulse">Loading...</span>
+                    ) : referralCode?.code ? (
+                      <span className="text-green-400 font-bold">{referralCode.code}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Error loading code</span>
+                    )}
                   </div>
                   <Button
                     size="icon"

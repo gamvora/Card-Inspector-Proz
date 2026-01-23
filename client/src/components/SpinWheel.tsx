@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 interface SpinWheelProps {
   prizes: number[];
   onSpin: () => Promise<{ creditsWon: number; prizeIndex: number }>;
-  canSpin: boolean;
+  canSpin?: boolean;
   isSpinning?: boolean;
+  isLoading?: boolean;
 }
 
 const playSpinSound = () => {
@@ -45,7 +46,7 @@ const playWinSound = () => {
   } catch (e) {}
 };
 
-export function SpinWheel({ prizes, onSpin, canSpin, isSpinning: externalSpinning }: SpinWheelProps) {
+export function SpinWheel({ prizes, onSpin, canSpin, isSpinning: externalSpinning, isLoading }: SpinWheelProps) {
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [wonPrize, setWonPrize] = useState<number | null>(null);
@@ -63,7 +64,7 @@ export function SpinWheel({ prizes, onSpin, canSpin, isSpinning: externalSpinnin
   ];
 
   const handleSpin = async () => {
-    if (!canSpin || isSpinning || externalSpinning) return;
+    if (!canSpin || isLoading || isSpinning || externalSpinning) return;
 
     setIsSpinning(true);
     setWonPrize(null);
@@ -213,22 +214,34 @@ export function SpinWheel({ prizes, onSpin, canSpin, isSpinning: externalSpinnin
       </AnimatePresence>
 
       <motion.div
-        whileHover={canSpin ? { scale: 1.02 } : {}}
-        whileTap={canSpin ? { scale: 0.98 } : {}}
+        whileHover={canSpin && !isLoading ? { scale: 1.02 } : {}}
+        whileTap={canSpin && !isLoading ? { scale: 0.98 } : {}}
       >
         <Button
           onClick={handleSpin}
-          disabled={!canSpin || isSpinning || externalSpinning}
+          disabled={isLoading || !canSpin || isSpinning || externalSpinning}
           size="lg"
           className={cn(
             "text-white font-bold px-10 py-6 text-lg shadow-lg",
-            canSpin 
-              ? "bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 bg-[length:200%_100%] hover:animate-shimmer shadow-purple-500/30"
-              : "bg-gray-500"
+            isLoading 
+              ? "bg-gray-500"
+              : canSpin 
+                ? "bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 bg-[length:200%_100%] hover:animate-shimmer shadow-purple-500/30"
+                : "bg-gray-500"
           )}
           data-testid="button-spin"
         >
-          {isSpinning || externalSpinning ? (
+          {isLoading ? (
+            <span className="flex items-center gap-2">
+              <motion.span
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              >
+                <Gift className="w-5 h-5" />
+              </motion.span>
+              Loading...
+            </span>
+          ) : isSpinning || externalSpinning ? (
             <span className="flex items-center gap-2">
               <motion.span
                 animate={{ rotate: 360 }}
