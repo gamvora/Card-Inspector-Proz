@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-export type Theme = "light" | "dark" | "system" | "nighty" | "forest" | "sunset";
+export type Theme = "light" | "dark" | "system" | "nighty" | "forest" | "sunset" | "ocean" | "candy" | "cyber" | "midnight";
 
 type ThemeContextType = {
   theme: Theme;
   setTheme: (theme: Theme) => void;
-  resolvedTheme: "light" | "dark" | "nighty" | "forest" | "sunset";
+  resolvedTheme: "light" | "dark" | "nighty" | "forest" | "sunset" | "ocean" | "candy" | "cyber" | "midnight";
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -18,14 +18,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return "dark";
   });
 
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark" | "nighty" | "forest" | "sunset">("dark");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark" | "nighty" | "forest" | "sunset" | "ocean" | "candy" | "cyber" | "midnight">("dark");
 
   useEffect(() => {
     const root = window.document.documentElement;
     
-    root.classList.remove("light", "dark", "nighty", "forest", "sunset");
+    root.classList.remove("light", "dark", "nighty", "forest", "sunset", "ocean", "candy", "cyber", "midnight");
 
-    let resolved: "light" | "dark" | "nighty" | "forest" | "sunset";
+    let resolved: "light" | "dark" | "nighty" | "forest" | "sunset" | "ocean" | "candy" | "cyber" | "midnight";
     
     if (theme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -36,7 +36,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     root.classList.add(resolved);
     
-    const darkThemes = ["dark", "nighty", "forest"];
+    const darkThemes = ["dark", "nighty", "forest", "ocean", "cyber", "midnight"];
     if (darkThemes.includes(resolved)) {
       root.classList.add("dark");
     }

@@ -138,6 +138,94 @@
   --ring: 25 90% 50%;
 }
 
+.ocean {
+  --background: 200 50% 8%;
+  --foreground: 190 30% 95%;
+  --card: 200 45% 12%;
+  --card-foreground: 190 30% 95%;
+  --popover: 200 50% 8%;
+  --popover-foreground: 190 30% 95%;
+  --primary: 185 75% 50%;
+  --primary-foreground: 200 50% 5%;
+  --secondary: 200 40% 18%;
+  --secondary-foreground: 190 30% 95%;
+  --muted: 200 40% 18%;
+  --muted-foreground: 195 25% 60%;
+  --accent: 175 70% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 200 35% 20%;
+  --input: 200 40% 18%;
+  --ring: 185 75% 50%;
+}
+
+.candy {
+  --background: 330 40% 97%;
+  --foreground: 320 25% 15%;
+  --card: 335 50% 95%;
+  --card-foreground: 320 25% 15%;
+  --popover: 330 40% 97%;
+  --popover-foreground: 320 25% 15%;
+  --primary: 325 85% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 335 35% 88%;
+  --secondary-foreground: 320 25% 15%;
+  --muted: 335 35% 88%;
+  --muted-foreground: 320 20% 45%;
+  --accent: 280 70% 60%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 335 30% 85%;
+  --input: 335 35% 88%;
+  --ring: 325 85% 55%;
+}
+
+.cyber {
+  --background: 75 40% 5%;
+  --foreground: 80 30% 95%;
+  --card: 75 35% 10%;
+  --card-foreground: 80 30% 95%;
+  --popover: 75 40% 5%;
+  --popover-foreground: 80 30% 95%;
+  --primary: 85 90% 50%;
+  --primary-foreground: 75 40% 5%;
+  --secondary: 75 30% 15%;
+  --secondary-foreground: 80 30% 95%;
+  --muted: 75 30% 15%;
+  --muted-foreground: 80 20% 55%;
+  --accent: 120 70% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 75 25% 18%;
+  --input: 75 30% 15%;
+  --ring: 85 90% 50%;
+}
+
+.midnight {
+  --background: 230 35% 8%;
+  --foreground: 220 25% 95%;
+  --card: 230 30% 12%;
+  --card-foreground: 220 25% 95%;
+  --popover: 230 35% 8%;
+  --popover-foreground: 220 25% 95%;
+  --primary: 240 70% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 230 25% 18%;
+  --secondary-foreground: 220 25% 95%;
+  --muted: 230 25% 18%;
+  --muted-foreground: 225 20% 55%;
+  --accent: 260 65% 55%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 230 20% 20%;
+  --input: 230 25% 18%;
+  --ring: 240 70% 60%;
+}
+
 @layer base {
   body {
     @apply bg-background text-foreground antialiased;

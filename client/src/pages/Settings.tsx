@@ -38,6 +38,12 @@ import {
   Sunset,
   Stars,
   Palette,
+  Eye,
+  EyeOff,
+  Waves,
+  Candy,
+  Sparkles,
+  Cloud,
 } from 'lucide-react';
 import { Link } from 'wouter';
 
@@ -48,6 +54,10 @@ const themeOptions: { value: Theme; label: string; icon: typeof Sun; color: stri
   { value: 'nighty', label: 'Nighty', icon: Stars, color: 'text-purple-500' },
   { value: 'forest', label: 'Forest', icon: Leaf, color: 'text-emerald-500' },
   { value: 'sunset', label: 'Sunset', icon: Sunset, color: 'text-orange-500' },
+  { value: 'ocean', label: 'Ocean', icon: Waves, color: 'text-cyan-500' },
+  { value: 'candy', label: 'Candy', icon: Sparkles, color: 'text-pink-500' },
+  { value: 'cyber', label: 'Cyber', icon: Zap, color: 'text-lime-500' },
+  { value: 'midnight', label: 'Midnight', icon: Cloud, color: 'text-indigo-500' },
 ];
 
 interface Site {
@@ -521,35 +531,25 @@ export default function Settings() {
               data-testid="input-proxies"
             />
 
-            <div className="flex flex-col gap-3 mb-4">
-              <Button 
-                variant="outline"
-                onClick={handleTestFirstProxy}
-                disabled={testingProxy !== null || !newProxies.trim() || stats.active}
-                className="rounded-xl border-2"
-                data-testid="button-test-proxy"
-              >
-                {testingProxy ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Zap className="w-4 h-4 mr-2 text-amber-500" />
-                )}
-                Test Connection
-              </Button>
-              <Button 
-                onClick={handleTestAndSaveProxies}
-                disabled={addProxiesMutation.isPending || !newProxies.trim() || stats.active}
-                className="rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-0 shadow-lg shadow-indigo-500/20"
-                data-testid="button-save-proxy"
-              >
-                {addProxiesMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                Test and Save Proxy
-              </Button>
-            </div>
+            <Button 
+              onClick={handleTestAndSaveProxies}
+              disabled={addProxiesMutation.isPending || testingProxy !== null || !newProxies.trim() || stats.active || proxies.length > 0}
+              size="lg"
+              className="w-full rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-0 shadow-lg shadow-indigo-500/20 mb-4"
+              data-testid="button-save-proxy"
+            >
+              {testingProxy || addProxiesMutation.isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  {testingProxy ? 'Testing...' : 'Saving...'}
+                </>
+              ) : (
+                <>
+                  <Zap className="w-5 h-5 mr-2" />
+                  Test & Save Proxy
+                </>
+              )}
+            </Button>
 
             <AnimatePresence>
               {proxyTestResult && (
@@ -634,71 +634,61 @@ export default function Settings() {
               )}
             </AnimatePresence>
 
-            <div className="flex gap-3">
-              <Button
-                onClick={handleTestFirstProxy}
-                disabled={testProxyMutation.isPending || !newProxies.trim()}
-                variant="outline"
-                size="lg"
-                className="rounded-xl border-2 border-indigo-200 dark:border-indigo-500/30 font-semibold"
-                data-testid="button-test-proxy"
-              >
-                {testProxyMutation.isPending ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5 mr-2 text-indigo-500" />
-                    Test
-                  </>
-                )}
-              </Button>
-              
-              <Button 
-                onClick={handleTestAndSaveProxies}
-                disabled={addProxiesMutation.isPending || !newProxies.trim()}
-                size="lg"
-                className="flex-1 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow-lg shadow-indigo-500/20 border-0"
-                data-testid="button-add-proxies"
-              >
-                {addProxiesMutation.isPending ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Save className="w-5 h-5 mr-2" />
-                    Save Proxies
-                  </>
-                )}
-              </Button>
-            </div>
-
             {proxies.length > 0 && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700"
+                className="space-y-3"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-500">
-                    {proxies.length} proxy{proxies.length !== 1 ? 's' : ''} configured
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => clearProxiesMutation.mutate()}
-                    disabled={clearProxiesMutation.isPending}
-                    className="text-rose-500 h-8 px-3 rounded-lg"
-                    data-testid="button-clear-proxies"
+                {proxies.map((proxy) => (
+                  <div 
+                    key={proxy.id}
+                    className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/10 border border-indigo-200 dark:border-indigo-500/30"
                   >
-                    {clearProxiesMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Clear All
-                      </>
-                    )}
-                  </Button>
-                </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-indigo-500" />
+                        <span className="font-semibold text-sm text-indigo-600 dark:text-indigo-400">Active Proxy</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setShowFullProxy(showFullProxy === proxy.id ? null : proxy.id)}
+                          className="rounded-xl"
+                          data-testid={`button-toggle-proxy-${proxy.id}`}
+                        >
+                          {showFullProxy === proxy.id ? (
+                            <EyeOff className="w-4 h-4 text-slate-500" />
+                          ) : (
+                            <Eye className="w-4 h-4 text-slate-500" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => clearProxiesMutation.mutate()}
+                          disabled={clearProxiesMutation.isPending || stats.active}
+                          className="rounded-xl text-rose-500"
+                          data-testid={`button-delete-proxy-${proxy.id}`}
+                        >
+                          {clearProxiesMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="font-mono text-xs bg-white/50 dark:bg-slate-800/50 p-2 rounded-lg overflow-hidden">
+                      {showFullProxy === proxy.id ? (
+                        <span className="break-all">{proxy.proxy}</span>
+                      ) : (
+                        <span>{proxy.proxy.split(':')[0]}:****:****:****</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </motion.div>
             )}
           </Card>
