@@ -29,6 +29,7 @@ export const sites = pgTable("sites", {
   userId: integer("user_id").notNull(),
   name: varchar("name", { length: 100 }).notNull(),
   url: text("url").notNull(),
+  productPrice: varchar("product_price", { length: 50 }),
   isActive: boolean("is_active").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });

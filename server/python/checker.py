@@ -975,33 +975,35 @@ def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_inpu
             response_text = json.dumps(response_json)
 
             try:
+                price_str = f"${total_amount}"
+                
                 if f"{base_url}/thank_you" in response_text or f"{base_url}/post_purchase" in response_text:
-                    return {'status': 'live', 'message': f'[CHARGED] Thank you for your purchase! | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[CHARGED] Thank you for your purchase! | ${total_amount}', 'price': price_str}
 
                 elif 'Your order is confirmed' in response_text:
-                    return {'status': 'live', 'message': f'[CHARGED] Order Placed! | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[CHARGED] Order Placed! | ${total_amount}', 'price': price_str}
 
                 elif 'INCORRECT_ZIP' in response_text:
-                    return {'status': 'live', 'message': f'[CHARGED] Incorrect ZIP | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[CHARGED] Incorrect ZIP | ${total_amount}', 'price': price_str}
 
                 elif 'INSUFFICIENT_FUNDS' in response_text:
-                    return {'status': 'live', 'message': f'[CHARGED] INSUFFICIENT FUNDS | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[CHARGED] INSUFFICIENT FUNDS | ${total_amount}', 'price': price_str}
 
                 elif 'INCORRECT_CVC' in response_text:
-                    return {'status': 'live', 'message': f'[CCN] Incorrect CVC | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[CCN] Incorrect CVC | ${total_amount}', 'price': price_str}
 
                 elif 'CompletePaymentChallenge' in response_text:
-                    return {'status': 'live', 'message': f'[3DS] 3DS Secure | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[3DS] 3DS Secure | ${total_amount}', 'price': price_str}
 
                 elif 'AUTHORIZATION_ERROR' in response_text:
-                    return {'status': 'live', 'message': f'[3DS] 3DS Secure | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[3DS] 3DS Secure | ${total_amount}', 'price': price_str}
 
                 elif '/authentications/' in response_text:
-                    return {'status': 'live', 'message': f'[3DS] 3DS Card | ${total_amount}'}
+                    return {'status': 'live', 'message': f'[3DS] 3DS Card | ${total_amount}', 'price': price_str}
 
                 elif 'processingError' in response_text:
                     err = response_json.get('data', {}).get('receipt', {}).get('processingError', {}).get('code', 'Unknown Error')
-                    return {'status': 'dead', 'message': f'[DEAD] {err} | ${total_amount}'}
+                    return {'status': 'dead', 'message': f'[DEAD] {err} | ${total_amount}', 'price': price_str}
 
                 else:
                     return {'status': 'dead', 'message': 'Invalid Response'}

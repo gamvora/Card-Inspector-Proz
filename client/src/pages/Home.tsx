@@ -43,6 +43,7 @@ interface Site {
   id: number;
   name: string;
   url: string;
+  productPrice: string | null;
   isActive: boolean;
 }
 
@@ -586,6 +587,11 @@ export default function Home() {
                     <span className="font-semibold text-sm truncate" data-testid="selected-site-name">
                       {selectedSite?.name || 'Select'}
                     </span>
+                    {selectedSite?.productPrice && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                        {selectedSite.productPrice}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

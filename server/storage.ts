@@ -49,6 +49,7 @@ export interface IStorage {
   updateSite(id: number, data: Partial<InsertSite>): Promise<Site | undefined>;
   deleteSite(id: number): Promise<void>;
   setActiveSite(userId: number, siteId: number): Promise<void>;
+  updateSitePrice(siteId: number, price: string): Promise<void>;
 
   // Proxies
   getUserProxies(userId: number): Promise<Proxy[]>;
@@ -227,6 +228,10 @@ export class DatabaseStorage implements IStorage {
   async setActiveSite(userId: number, siteId: number): Promise<void> {
     await db.update(sites).set({ isActive: false }).where(eq(sites.userId, userId));
     await db.update(sites).set({ isActive: true }).where(eq(sites.id, siteId));
+  }
+
+  async updateSitePrice(siteId: number, price: string): Promise<void> {
+    await db.update(sites).set({ productPrice: price }).where(eq(sites.id, siteId));
   }
 
   // Proxies

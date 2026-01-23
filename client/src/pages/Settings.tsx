@@ -64,6 +64,7 @@ interface Site {
   id: number;
   name: string;
   url: string;
+  productPrice: string | null;
   isActive: boolean;
 }
 
@@ -528,7 +529,14 @@ export default function Settings() {
                           </motion.div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-sm truncate">{site.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm truncate">{site.name}</p>
+                            {site.productPrice && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                                {site.productPrice}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-400 truncate font-mono">{site.url}</p>
                         </div>
                       </div>
