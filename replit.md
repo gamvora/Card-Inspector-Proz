@@ -6,7 +6,15 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 
 ## Recent Changes (January 2026)
 
-### Rewards & Engagement System (Latest)
+### Security Captcha System (Latest)
+- **4-Digit Number Captcha**: Users must enter a 4-digit code shown in a colorful styled image
+- **Anti-Bot Protection**: Prevents automated access to the app
+- **Animated Display**: Numbers shown with random colors, rotations, and visual noise
+- **Session Persistence**: Verification valid for 1 hour (stored in localStorage)
+- **Refresh Button**: Users can request a new captcha if needed
+- **Shows Before Tutorial**: Captcha appears first, then Loading screen, then Tutorial
+
+### Rewards & Engagement System
 - **Daily Spin Wheel**: Spin once per day for free credits (prizes: 20, 30, 40, 60, 85, 110 credits)
 - **Daily Streak**: Claim daily rewards with increasing bonuses (Day1=30, Day3=45, Day7=70, Day14=110, Day30=210 credits)
 - **Referral System**: Share unique code (NX + 6 chars) to earn 100 credits per new user; referred users get 50 credits bonus
