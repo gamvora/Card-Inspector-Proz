@@ -1021,6 +1021,7 @@ export async function registerRoutes(
       // Try YouTube Data API v3 first
       if (apiKey) {
         try {
+          console.log('[YouTube API] Attempting search with API key...');
           const response = await fetch(
             `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=8&q=${encodeURIComponent(query + ' music')}&key=${apiKey}`,
             { 
@@ -1031,6 +1032,7 @@ export async function registerRoutes(
 
           if (response.ok) {
             const data = await response.json();
+            console.log('[YouTube API] Success! Found', data.items?.length || 0, 'results');
             if (data.items && data.items.length > 0) {
               const results = data.items.map((item: any) => ({
                 id: item.id.videoId,
@@ -1041,10 +1043,15 @@ export async function registerRoutes(
               }));
               return res.json({ results });
             }
+          } else {
+            const errorData = await response.json();
+            console.log('[YouTube API] Error:', JSON.stringify(errorData.error || errorData));
           }
-        } catch (e) {
-          console.log('YouTube API failed, using fallback library');
+        } catch (e: any) {
+          console.log('[YouTube API] Exception:', e.message);
         }
+      } else {
+        console.log('[YouTube API] No API key configured');
       }
 
       // Fallback: Extended library of popular songs
