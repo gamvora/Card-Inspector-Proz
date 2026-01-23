@@ -936,7 +936,10 @@ def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_inpu
                     raise Exception("Receipt ID is empty")
 
     except Exception as e:
-        return {'status': 'dead', 'message': 'Invalid Response'}
+        try:
+            return {'status': 'dead', 'message': 'Invalid Response', 'price': f'${total_amount}' if total_amount else None}
+        except:
+            return {'status': 'dead', 'message': 'Invalid Response'}
 
     if receipt_id:
         purl = f"{base_url}/checkouts/unstable/graphql?operationName=PollForReceipt"

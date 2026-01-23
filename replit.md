@@ -6,7 +6,13 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 
 ## Recent Changes (January 2026)
 
-### Security Captcha System (Latest)
+### Auto-Save Product Price (Latest)
+- **Automatic Price Capture**: When checking cards, the product price is automatically saved to the site
+- **Display in Home**: Price shown next to site name in the site selector (green badge)
+- **Display in Settings**: Price shown next to site name in the sites list
+- **Persistent Storage**: Price saved to database and displayed even after page refresh
+
+### Security Captcha System
 - **4-Digit Number Captcha**: Users must enter a 4-digit code shown in a colorful styled image
 - **Anti-Bot Protection**: Prevents automated access to the app
 - **Animated Display**: Numbers shown with random colors, rotations, and visual noise
