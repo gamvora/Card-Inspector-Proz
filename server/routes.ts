@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
 import { handleBotUpdate, initBot, sendChargedCardNotification } from "./services/telegramBot";
 import { setWss } from "./services/wsManager";
-import { searchTracks as spotifySearch } from "./services/spotify";
+import { searchTracks as spotifySearch, getAccessTokenForClient, playTrack as spotifyPlayTrack } from "./services/spotify";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
 
@@ -1005,6 +1005,33 @@ export async function registerRoutes(
       const onlineUsers = await getOnlineUsers();
       res.json(onlineUsers);
     } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Spotify Token API (for Web Playback SDK)
+  app.get('/api/spotify/token', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { accessToken, clientId } = await getAccessTokenForClient();
+      res.json({ accessToken, clientId });
+    } catch (e: any) {
+      console.error('[Spotify] Token error:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Spotify Play Track API
+  app.put('/api/spotify/play', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { uri, deviceId } = req.body;
+      if (!uri || !deviceId) {
+        return res.status(400).json({ error: 'URI and deviceId required' });
+      }
+
+      await spotifyPlayTrack(uri, deviceId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error('[Spotify] Play error:', e.message);
       res.status(500).json({ error: e.message });
     }
   });

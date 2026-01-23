@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,9 +15,10 @@ import {
   VolumeX, 
   Repeat, 
   Loader2,
-  Music,
   Disc3,
-  ExternalLink
+  ExternalLink,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { SiSpotify } from 'react-icons/si';
 
@@ -29,8 +30,16 @@ interface SpotifyTrack {
   album: string;
   thumbnail: string;
   duration: string;
+  durationMs?: number;
   previewUrl: string | null;
   externalUrl: string;
+}
+
+declare global {
+  interface Window {
+    Spotify: any;
+    onSpotifyWebPlaybackSDKReady: () => void;
+  }
 }
 
 export function MusicPlayer() {
@@ -40,14 +49,19 @@ export function MusicPlayer() {
   const [currentTrack, setCurrentTrack] = useState<SpotifyTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(30); // Spotify previews are 30 seconds
+  const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(50);
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<any>(null);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // Load saved settings
   useEffect(() => {
     const savedTrack = localStorage.getItem('currentSpotifyTrack');
     const savedVolume = localStorage.getItem('musicVolume');
@@ -62,59 +76,159 @@ export function MusicPlayer() {
     if (savedLoop) setIsLooping(savedLoop === 'true');
   }, []);
 
-  useEffect(() => {
-    // Create audio element
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-      audioRef.current.volume = volume / 100;
-      
-      audioRef.current.addEventListener('ended', () => {
-        if (isLooping && audioRef.current) {
-          audioRef.current.currentTime = 0;
-          audioRef.current.play();
-        } else {
-          setIsPlaying(false);
-          setProgress(0);
-          stopProgressTracking();
-        }
-      });
-      
-      audioRef.current.addEventListener('loadedmetadata', () => {
-        if (audioRef.current) {
-          setDuration(audioRef.current.duration);
-        }
+  // Get Spotify access token
+  const getAccessToken = useCallback(async () => {
+    try {
+      const response = await authFetch('/api/spotify/token');
+      const data = await response.json();
+      if (data.accessToken) {
+        setAccessToken(data.accessToken);
+        return data.accessToken;
+      }
+    } catch (error) {
+      console.error('Failed to get Spotify token:', error);
+    }
+    return null;
+  }, []);
+
+  // Initialize Spotify Web Playback SDK
+  const initializePlayer = useCallback(async () => {
+    if (!accessToken || playerRef.current) return;
+
+    setIsConnecting(true);
+
+    // Load Spotify SDK script if not loaded
+    if (!window.Spotify) {
+      const script = document.createElement('script');
+      script.src = 'https://sdk.scdn.co/spotify-player.js';
+      script.async = true;
+      document.body.appendChild(script);
+
+      await new Promise<void>((resolve) => {
+        window.onSpotifyWebPlaybackSDKReady = () => resolve();
       });
     }
 
+    const player = new window.Spotify.Player({
+      name: 'NexusChecker Music',
+      getOAuthToken: (cb: (token: string) => void) => {
+        cb(accessToken);
+      },
+      volume: volume / 100
+    });
+
+    player.addListener('ready', ({ device_id }: { device_id: string }) => {
+      console.log('[Spotify] Player ready with device ID:', device_id);
+      setDeviceId(device_id);
+      setIsConnected(true);
+      setIsConnecting(false);
+    });
+
+    player.addListener('not_ready', ({ device_id }: { device_id: string }) => {
+      console.log('[Spotify] Device went offline:', device_id);
+      setIsConnected(false);
+    });
+
+    player.addListener('player_state_changed', (state: any) => {
+      if (!state) return;
+      
+      setIsPlaying(!state.paused);
+      setProgress(state.position);
+      setDuration(state.duration);
+      
+      if (state.track_window?.current_track) {
+        const track = state.track_window.current_track;
+        setCurrentTrack({
+          id: track.id,
+          uri: track.uri,
+          title: track.name,
+          artist: track.artists.map((a: any) => a.name).join(', '),
+          album: track.album.name,
+          thumbnail: track.album.images[0]?.url || '',
+          duration: formatDuration(state.duration),
+          durationMs: state.duration,
+          previewUrl: null,
+          externalUrl: `https://open.spotify.com/track/${track.id}`
+        });
+      }
+    });
+
+    player.addListener('initialization_error', ({ message }: { message: string }) => {
+      console.error('[Spotify] Init error:', message);
+      setIsConnecting(false);
+    });
+
+    player.addListener('authentication_error', ({ message }: { message: string }) => {
+      console.error('[Spotify] Auth error:', message);
+      setIsConnecting(false);
+      setAccessToken(null);
+    });
+
+    player.addListener('account_error', ({ message }: { message: string }) => {
+      console.error('[Spotify] Account error:', message);
+      setIsConnecting(false);
+    });
+
+    const connected = await player.connect();
+    if (connected) {
+      playerRef.current = player;
+    } else {
+      setIsConnecting(false);
+    }
+  }, [accessToken, volume]);
+
+  // Connect to Spotify
+  const connectSpotify = async () => {
+    const token = await getAccessToken();
+    if (token) {
+      await initializePlayer();
+    }
+  };
+
+  // Initialize when token is available
+  useEffect(() => {
+    if (accessToken && !playerRef.current) {
+      initializePlayer();
+    }
+  }, [accessToken, initializePlayer]);
+
+  // Progress tracking
+  useEffect(() => {
+    if (isPlaying && isConnected) {
+      progressInterval.current = setInterval(async () => {
+        if (playerRef.current) {
+          const state = await playerRef.current.getCurrentState();
+          if (state) {
+            setProgress(state.position);
+          }
+        }
+      }, 1000);
+    } else {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    }
+
     return () => {
-      stopProgressTracking();
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    };
+  }, [isPlaying, isConnected]);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.disconnect();
       }
     };
   }, []);
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.loop = isLooping;
-    }
-  }, [isLooping]);
-
-  const startProgressTracking = () => {
-    stopProgressTracking();
-    progressInterval.current = setInterval(() => {
-      if (audioRef.current) {
-        setProgress(audioRef.current.currentTime);
-      }
-    }, 100);
-  };
-
-  const stopProgressTracking = () => {
-    if (progressInterval.current) {
-      clearInterval(progressInterval.current);
-      progressInterval.current = null;
-    }
+  const formatDuration = (ms: number): string => {
+    const mins = Math.floor(ms / 60000);
+    const secs = Math.floor((ms % 60000) / 1000);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleSearch = async () => {
@@ -134,63 +248,61 @@ export function MusicPlayer() {
     }
   };
 
-  const handleSelectTrack = (track: SpotifyTrack) => {
-    setCurrentTrack(track);
-    localStorage.setItem('currentSpotifyTrack', JSON.stringify(track));
-    setSearchResults([]);
-    setSearchQuery('');
-    
-    if (track.previewUrl && audioRef.current) {
-      audioRef.current.src = track.previewUrl;
-      audioRef.current.load();
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-        startProgressTracking();
-      }).catch(e => {
-        console.error('Playback failed:', e);
+  const handleSelectTrack = async (track: SpotifyTrack) => {
+    if (!isConnected || !deviceId) {
+      // Try to connect first
+      await connectSpotify();
+      return;
+    }
+
+    try {
+      await authFetch('/api/spotify/play', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          uri: track.uri,
+          deviceId: deviceId
+        })
       });
+      
+      setCurrentTrack(track);
+      localStorage.setItem('currentSpotifyTrack', JSON.stringify(track));
+      setSearchResults([]);
+      setSearchQuery('');
+    } catch (error) {
+      console.error('Failed to play track:', error);
     }
   };
 
-  const togglePlay = () => {
-    if (!audioRef.current || !currentTrack?.previewUrl) return;
-    
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-      stopProgressTracking();
-    } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-        startProgressTracking();
-      }).catch(e => console.error('Play failed:', e));
-    }
+  const togglePlay = async () => {
+    if (!playerRef.current) return;
+    await playerRef.current.togglePlay();
   };
 
-  const handleSeek = (value: number[]) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = value[0];
+  const handleSeek = async (value: number[]) => {
+    if (!playerRef.current) return;
+    await playerRef.current.seek(value[0]);
     setProgress(value[0]);
   };
 
-  const handleVolumeChange = (value: number[]) => {
+  const handleVolumeChange = async (value: number[]) => {
     const newVolume = value[0];
     setVolume(newVolume);
     localStorage.setItem('musicVolume', newVolume.toString());
-    if (audioRef.current) {
-      audioRef.current.volume = newVolume / 100;
+    if (playerRef.current) {
+      await playerRef.current.setVolume(newVolume / 100);
     }
     if (newVolume > 0 && isMuted) {
       setIsMuted(false);
     }
   };
 
-  const toggleMute = () => {
-    if (!audioRef.current) return;
+  const toggleMute = async () => {
+    if (!playerRef.current) return;
     if (isMuted) {
-      audioRef.current.volume = volume / 100;
+      await playerRef.current.setVolume(volume / 100);
     } else {
-      audioRef.current.volume = 0;
+      await playerRef.current.setVolume(0);
     }
     setIsMuted(!isMuted);
   };
@@ -199,26 +311,17 @@ export function MusicPlayer() {
     const newLoop = !isLooping;
     setIsLooping(newLoop);
     localStorage.setItem('musicLoop', newLoop.toString());
+    // Note: Loop functionality would need Spotify API call
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const skipBack = async () => {
+    if (!playerRef.current) return;
+    await playerRef.current.previousTrack();
   };
 
-  const skipBack = () => {
-    if (!audioRef.current) return;
-    const newTime = Math.max(0, audioRef.current.currentTime - 5);
-    audioRef.current.currentTime = newTime;
-    setProgress(newTime);
-  };
-
-  const skipForward = () => {
-    if (!audioRef.current) return;
-    const newTime = Math.min(duration, audioRef.current.currentTime + 5);
-    audioRef.current.currentTime = newTime;
-    setProgress(newTime);
+  const skipForward = async () => {
+    if (!playerRef.current) return;
+    await playerRef.current.nextTrack();
   };
 
   const openInSpotify = () => {
@@ -235,8 +338,34 @@ export function MusicPlayer() {
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-bold text-sm">Spotify Player</h3>
-          <p className="text-[10px] text-muted-foreground">Premium Connected</p>
+          <div className="flex items-center gap-1">
+            {isConnected ? (
+              <>
+                <Wifi className="w-3 h-3 text-green-500" />
+                <p className="text-[10px] text-green-500">Connected</p>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3 h-3 text-muted-foreground" />
+                <p className="text-[10px] text-muted-foreground">Not connected</p>
+              </>
+            )}
+          </div>
         </div>
+        {!isConnected && (
+          <Button
+            size="sm"
+            onClick={connectSpotify}
+            disabled={isConnecting}
+            className="bg-[#1DB954] hover:bg-[#1ed760] text-white text-xs h-7"
+          >
+            {isConnecting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              'Connect'
+            )}
+          </Button>
+        )}
       </div>
 
       <div className="relative mb-3">
@@ -278,11 +407,7 @@ export function MusicPlayer() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 onClick={() => handleSelectTrack(track)}
-                className={`flex items-center gap-2 p-1.5 rounded-md cursor-pointer transition-colors active:scale-[0.98] ${
-                  track.previewUrl 
-                    ? 'hover:bg-white/50 dark:hover:bg-slate-700/50' 
-                    : 'opacity-50 cursor-not-allowed'
-                }`}
+                className="flex items-center gap-2 p-1.5 rounded-md hover:bg-white/50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors active:scale-[0.98]"
                 data-testid={`song-result-${track.id}`}
               >
                 <img 
@@ -301,7 +426,7 @@ export function MusicPlayer() {
         )}
       </AnimatePresence>
 
-      {currentTrack && (
+      {currentTrack && isConnected && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -334,111 +459,113 @@ export function MusicPlayer() {
             </Button>
           </div>
 
-          {currentTrack.previewUrl ? (
-            <>
-              <div className="space-y-1">
-                <Slider
-                  value={[progress]}
-                  max={duration || 30}
-                  step={0.1}
-                  onValueChange={handleSeek}
-                  className="cursor-pointer"
-                  data-testid="slider-progress"
-                />
-                <div className="flex justify-between text-[10px] text-muted-foreground px-0.5">
-                  <span>{formatTime(progress)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={toggleLoop}
-                  className={`h-8 w-8 rounded-full ${isLooping ? 'text-green-500 bg-green-500/20' : ''}`}
-                  data-testid="button-loop"
-                >
-                  <Repeat className="w-3.5 h-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={skipBack}
-                  className="h-8 w-8 rounded-full"
-                  data-testid="button-skip-back"
-                >
-                  <SkipBack className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="default"
-                  onClick={togglePlay}
-                  className="h-10 w-10 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-white shadow-md border-0 p-0"
-                  data-testid="button-play-pause"
-                >
-                  {isPlaying ? (
-                    <Pause className="w-4 h-4" />
-                  ) : (
-                    <Play className="w-4 h-4 ml-0.5" />
-                  )}
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={skipForward}
-                  className="h-8 w-8 rounded-full"
-                  data-testid="button-skip-forward"
-                >
-                  <SkipForward className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={toggleMute}
-                  className="h-8 w-8 rounded-full"
-                  data-testid="button-mute"
-                >
-                  {isMuted ? (
-                    <VolumeX className="w-3.5 h-3.5" />
-                  ) : (
-                    <Volume2 className="w-3.5 h-3.5" />
-                  )}
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2 px-2">
-                <VolumeX className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  max={100}
-                  step={1}
-                  onValueChange={handleVolumeChange}
-                  className="flex-1"
-                  data-testid="slider-volume"
-                />
-                <Volume2 className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-3">
-              <p className="text-xs text-muted-foreground mb-2">Preview not available</p>
-              <Button
-                size="sm"
-                onClick={openInSpotify}
-                className="bg-[#1DB954] hover:bg-[#1ed760] text-white text-xs"
-              >
-                <SiSpotify className="w-3 h-3 mr-1" />
-                Open in Spotify
-              </Button>
+          <div className="space-y-1">
+            <Slider
+              value={[progress]}
+              max={duration || 1}
+              step={1000}
+              onValueChange={handleSeek}
+              className="cursor-pointer"
+              data-testid="slider-progress"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground px-0.5">
+              <span>{formatDuration(progress)}</span>
+              <span>{formatDuration(duration)}</span>
             </div>
-          )}
+          </div>
+
+          <div className="flex items-center justify-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleLoop}
+              className={`h-8 w-8 rounded-full ${isLooping ? 'text-green-500 bg-green-500/20' : ''}`}
+              data-testid="button-loop"
+            >
+              <Repeat className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={skipBack}
+              className="h-8 w-8 rounded-full"
+              data-testid="button-skip-back"
+            >
+              <SkipBack className="w-4 h-4" />
+            </Button>
+            <Button
+              size="default"
+              onClick={togglePlay}
+              className="h-10 w-10 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-white shadow-md border-0 p-0"
+              data-testid="button-play-pause"
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4 ml-0.5" />
+              )}
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={skipForward}
+              className="h-8 w-8 rounded-full"
+              data-testid="button-skip-forward"
+            >
+              <SkipForward className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleMute}
+              className="h-8 w-8 rounded-full"
+              data-testid="button-mute"
+            >
+              {isMuted ? (
+                <VolumeX className="w-3.5 h-3.5" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 px-2">
+            <VolumeX className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+            <Slider
+              value={[isMuted ? 0 : volume]}
+              max={100}
+              step={1}
+              onValueChange={handleVolumeChange}
+              className="flex-1"
+              data-testid="slider-volume"
+            />
+            <Volume2 className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+          </div>
         </motion.div>
       )}
 
-      {!currentTrack && (
+      {!isConnected && (
         <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
           <Disc3 className="w-10 h-10 mb-2 opacity-30" />
-          <p className="text-xs">Search for music on Spotify</p>
+          <p className="text-xs mb-2">Connect to play full songs</p>
+          <Button
+            size="sm"
+            onClick={connectSpotify}
+            disabled={isConnecting}
+            className="bg-[#1DB954] hover:bg-[#1ed760] text-white"
+          >
+            {isConnecting ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <SiSpotify className="w-3 h-3 mr-1" />
+                Connect Spotify
+              </>
+            )}
+          </Button>
         </div>
       )}
     </Card>

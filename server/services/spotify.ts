@@ -94,3 +94,19 @@ export async function getCurrentUser() {
     throw error;
   }
 }
+
+export async function getAccessTokenForClient() {
+  const { accessToken, clientId } = await getAccessToken();
+  return { accessToken, clientId };
+}
+
+export async function playTrack(uri: string, deviceId: string) {
+  try {
+    const spotify = await getSpotifyClient();
+    await spotify.player.startResumePlayback(deviceId, undefined, [uri]);
+    return true;
+  } catch (error: any) {
+    console.error('[Spotify] Play error:', error.message);
+    throw error;
+  }
+}
