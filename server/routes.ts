@@ -1009,7 +1009,7 @@ export async function registerRoutes(
     }
   });
 
-  // Music Search API (using Invidious - free, no API key needed)
+  // Music Search API (using Deezer - free, no API key needed)
   app.get('/api/music/search', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const query = req.query.q as string;
@@ -1019,47 +1019,40 @@ export async function registerRoutes(
 
       let results: any[] = [];
 
-      // Try Piped API first (faster and more reliable)
-      const pipedInstances = [
-        'https://pipedapi.kavin.rocks',
-        'https://api.piped.yt',
-        'https://pipedapi.adminforge.de'
-      ];
-
-      for (const instance of pipedInstances) {
-        try {
-          console.log(`[Music] Trying Piped: ${instance}...`);
-          const response = await fetch(
-            `${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`,
-            { 
-              headers: { 'Accept': 'application/json' },
-              signal: AbortSignal.timeout(4000)
-            }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.items && data.items.length > 0) {
-              results = data.items.slice(0, 8).map((item: any) => ({
-                id: item.url?.replace('/watch?v=', '') || item.id,
-                title: item.title,
-                thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${item.url?.replace('/watch?v=', '')}/hqdefault.jpg`,
-                duration: formatDurationSeconds(item.duration || 0),
-                channel: item.uploaderName || item.uploader || 'Unknown'
-              }));
-              console.log(`[Music] Found ${results.length} results from Piped`);
-              break;
-            }
+      // Use Deezer API (free, reliable, no API key required)
+      try {
+        console.log('[Music] Searching Deezer for:', query);
+        const response = await fetch(
+          `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=10`,
+          { 
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(5000)
           }
-        } catch (e) {
-          console.log(`[Music] Piped ${instance} failed, trying next...`);
-          continue;
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.data && data.data.length > 0) {
+            results = data.data.slice(0, 8).map((track: any) => ({
+              id: track.id.toString(),
+              title: track.title,
+              artist: track.artist?.name || 'Unknown',
+              channel: track.artist?.name || 'Unknown',
+              thumbnail: track.album?.cover_medium || track.album?.cover || '',
+              duration: formatDurationSeconds(track.duration || 0),
+              previewUrl: track.preview,
+              deezerId: track.id
+            }));
+            console.log(`[Music] Found ${results.length} results from Deezer`);
+          }
         }
+      } catch (e: any) {
+        console.log('[Music] Deezer failed:', e.message);
       }
 
-      // Fallback to local library if all instances fail
+      // Fallback to local library if Deezer fails
       if (results.length === 0) {
-        console.log('[Music] All instances failed, using local library');
+        console.log('[Music] Deezer failed, using local library');
         const popularSongs = [
           // K-Pop
           { id: 'gdZLi9oWNZg', title: 'Dynamite - BTS', duration: '3:43', channel: 'BTS' },
