@@ -12,6 +12,7 @@ import { initBackgroundMusic } from "@/components/BackgroundMusic";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
+import Rewards from "@/pages/Rewards";
 import Loading from "@/pages/Loading";
 import NotFound from "@/pages/not-found";
 
@@ -39,6 +40,7 @@ function AppContent() {
       <Route path="/" component={Home} />
       <Route path="/profile" component={Profile} />
       <Route path="/settings" component={Settings} />
+      <Route path="/rewards" component={Rewards} />
       <Route component={NotFound} />
     </Switch>
   );

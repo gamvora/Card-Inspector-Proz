@@ -14,7 +14,7 @@ import {
   ChevronRight,
   Home as HomeIcon,
   User,
-  Settings,
+  Settings as SettingsIcon,
   Sparkles,
   TrendingUp,
   TrendingDown,
@@ -28,6 +28,8 @@ import {
   Globe,
   X,
   Info,
+  Gift,
+  Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -538,7 +540,7 @@ export default function Home() {
                   whileTap={{ scale: 0.95 }}
                   className="p-2.5 rounded-xl hover:bg-muted transition-colors"
                 >
-                  <Settings className="w-4 h-4 text-muted-foreground" />
+                  <SettingsIcon className="w-4 h-4 text-muted-foreground" />
                 </motion.button>
               </Link>
             </div>
@@ -688,6 +690,35 @@ export default function Home() {
           </motion.button>
         </motion.div>
 
+        {(liveResults.length > 0 || deadResults.length > 0) && (
+          <div className="flex justify-end gap-2 mb-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const type = activeTab === "live" ? "approved" : "declined";
+                  const res = await authFetch(`/api/results/export?type=${type}`);
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `nexus-${type}-${Date.now()}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast({ title: "Export complete!", soundType: "success" });
+                } catch {
+                  toast({ title: "Export failed", variant: "destructive" });
+                }
+              }}
+              data-testid="button-export-results"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export {activeTab === "live" ? "Live" : "Dead"}
+            </Button>
+          </div>
+        )}
+
         <div className="space-y-3 pb-4">
           <AnimatePresence mode="popLayout">
             {displayedResults.length === 0 ? (
@@ -794,10 +825,22 @@ export default function Home() {
               <span className="text-[10px] font-semibold text-purple-500">Home</span>
             </motion.button>
           </Link>
+          <Link href="/rewards">
+            <motion.button 
+              whileTap={{ scale: 0.95 }}
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
+              data-testid="nav-rewards"
+            >
+              <div className="p-2">
+                <Gift className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <span className="text-[10px] font-medium text-muted-foreground">Rewards</span>
+            </motion.button>
+          </Link>
           <Link href="/profile">
             <motion.button 
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-profile"
             >
               <div className="p-2">
@@ -809,12 +852,12 @@ export default function Home() {
           <Link href="/settings">
             <motion.button 
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-settings"
               data-tutorial="settings-nav"
             >
               <div className="p-2">
-                <Settings className="w-5 h-5 text-muted-foreground" />
+                <SettingsIcon className="w-5 h-5 text-muted-foreground" />
               </div>
               <span className="text-[10px] font-medium text-muted-foreground">Settings</span>
             </motion.button>

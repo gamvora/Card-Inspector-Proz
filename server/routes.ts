@@ -1380,6 +1380,258 @@ export async function registerRoutes(
     }
   });
 
+  // === REFERRAL SYSTEM ===
+  app.get('/api/referral/code', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const code = await storage.generateReferralCode(req.user!.id);
+      res.json({ code });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/referral/stats', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const referrals = await storage.getReferralsByUser(req.user!.id);
+      const count = await storage.getReferralCount(req.user!.id);
+      const totalCredits = referrals.reduce((sum, r) => sum + (r.creditsAwarded || 0), 0);
+      res.json({ count, totalCredits, referrals });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/referral/apply', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { code } = req.body;
+      if (!code) {
+        return res.status(400).json({ error: 'Referral code required' });
+      }
+      
+      const user = await storage.getUserByTelegramId(req.user!.telegramId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      if (user.referredBy) {
+        return res.status(400).json({ error: 'You have already used a referral code' });
+      }
+      
+      const referrer = await storage.getUserByReferralCode(code);
+      if (!referrer) {
+        return res.status(404).json({ error: 'Invalid referral code' });
+      }
+      
+      if (referrer.id === user.id) {
+        return res.status(400).json({ error: 'Cannot use your own referral code' });
+      }
+      
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      if (user.createdAt && new Date(user.createdAt) < fiveMinutesAgo) {
+        return res.status(400).json({ error: 'Referral codes can only be used within 5 minutes of registration' });
+      }
+      
+      await storage.updateUser(req.user!.telegramId, { referredBy: referrer.id });
+      await storage.createReferral(referrer.id, user.id, code);
+      
+      await storage.updateUserCredits(referrer.telegramId, 100);
+      await storage.addCreditTransaction(referrer.id, 100, 'referral', `Referral bonus from ${user.username || user.firstName || 'user'}`);
+      
+      await storage.updateUserCredits(req.user!.telegramId, 50);
+      await storage.addCreditTransaction(user.id, 50, 'referral_bonus', 'Welcome bonus for using referral code');
+      
+      broadcastToUser(referrer.telegramId, { type: WS_EVENTS.CREDITS_UPDATE, credits: referrer.credits + 100 });
+      
+      res.json({ success: true, creditsEarned: 50 });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === DAILY SPIN WHEEL ===
+  const SPIN_PRIZES = [20, 30, 40, 60, 85, 110];
+  
+  app.get('/api/spin/status', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const canSpin = await storage.canSpinToday(req.user!.id);
+      const lastSpin = await storage.getLastSpin(req.user!.id);
+      res.json({ canSpin, lastSpin });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/spin', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const canSpin = await storage.canSpinToday(req.user!.id);
+      if (!canSpin) {
+        return res.status(400).json({ error: 'You have already spun today. Come back tomorrow!' });
+      }
+      
+      const prizeIndex = Math.floor(Math.random() * SPIN_PRIZES.length);
+      const creditsWon = SPIN_PRIZES[prizeIndex];
+      
+      await storage.recordSpin(req.user!.id, creditsWon);
+      await storage.updateUserCredits(req.user!.telegramId, creditsWon);
+      await storage.addCreditTransaction(req.user!.id, creditsWon, 'daily_spin', 'Daily spin wheel reward');
+      
+      const user = await storage.getUserByTelegramId(req.user!.telegramId);
+      broadcastToUser(req.user!.telegramId, { type: WS_EVENTS.CREDITS_UPDATE, credits: user?.credits || 0 });
+      
+      res.json({ creditsWon, prizeIndex });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === DAILY STREAK ===
+  app.get('/api/streak/status', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const streak = await storage.getStreak(req.user!.id);
+      
+      let canClaim = true;
+      if (streak?.lastClaimDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const lastClaim = new Date(streak.lastClaimDate);
+        lastClaim.setHours(0, 0, 0, 0);
+        canClaim = lastClaim.getTime() < today.getTime();
+      }
+      
+      res.json({ 
+        currentStreak: streak?.currentStreak || 0,
+        longestStreak: streak?.longestStreak || 0,
+        lastClaimDate: streak?.lastClaimDate,
+        totalClaimed: streak?.totalClaimed || 0,
+        canClaim 
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/streak/claim', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = await storage.claimStreak(req.user!.id);
+      
+      if (!result.canClaim) {
+        return res.status(400).json({ error: 'You have already claimed your streak reward today!' });
+      }
+      
+      await storage.updateUserCredits(req.user!.telegramId, result.reward);
+      await storage.addCreditTransaction(req.user!.id, result.reward, 'daily_streak', `Day ${result.streak.currentStreak} streak reward`);
+      
+      const user = await storage.getUserByTelegramId(req.user!.telegramId);
+      broadcastToUser(req.user!.telegramId, { type: WS_EVENTS.CREDITS_UPDATE, credits: user?.credits || 0 });
+      
+      res.json({ 
+        reward: result.reward, 
+        currentStreak: result.streak.currentStreak,
+        longestStreak: result.streak.longestStreak
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === NOTIFICATION SETTINGS ===
+  app.get('/api/notifications/settings', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      let settings = await storage.getNotificationSettings(req.user!.id);
+      if (!settings) {
+        settings = await storage.updateNotificationSettings(req.user!.id, {
+          approvedAlerts: true,
+          dailySummary: false,
+          streakReminder: true,
+        });
+      }
+      res.json(settings);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/notifications/settings', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { approvedAlerts, dailySummary, streakReminder } = req.body;
+      const settings = await storage.updateNotificationSettings(req.user!.id, {
+        approvedAlerts,
+        dailySummary,
+        streakReminder,
+      });
+      res.json(settings);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === BIN LOOKUP ===
+  app.get('/api/bin/:bin', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const binParam = String(req.params.bin);
+      const bin = binParam.replace(/\D/g, '').slice(0, 6);
+      if (bin.length < 6) {
+        return res.status(400).json({ error: 'BIN must be at least 6 digits' });
+      }
+      
+      const response = await fetch(`https://lookup.binlist.net/${bin}`, {
+        headers: { 'Accept-Version': '3' }
+      });
+      
+      if (!response.ok) {
+        return res.status(404).json({ error: 'BIN not found' });
+      }
+      
+      const data = await response.json();
+      res.json({
+        bin,
+        scheme: data.scheme || 'unknown',
+        type: data.type || 'unknown',
+        brand: data.brand || 'unknown',
+        prepaid: data.prepaid || false,
+        country: {
+          name: data.country?.name || 'Unknown',
+          code: data.country?.alpha2 || 'XX',
+          emoji: data.country?.emoji || '',
+        },
+        bank: {
+          name: data.bank?.name || 'Unknown',
+          url: data.bank?.url || '',
+          phone: data.bank?.phone || '',
+          city: data.bank?.city || '',
+        }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: 'Failed to lookup BIN' });
+    }
+  });
+
+  // === EXPORT RESULTS ===
+  app.get('/api/results/export', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { type } = req.query;
+      const results = await storage.getResults(undefined, req.user!.id);
+      
+      let filteredResults = results;
+      if (type === 'approved') {
+        filteredResults = results.filter(r => r.status === 'charged');
+      } else if (type === 'declined') {
+        filteredResults = results.filter(r => r.status !== 'charged');
+      }
+      
+      const lines = filteredResults.map(r => {
+        const status = r.status === 'charged' ? 'APPROVED' : 'DECLINED';
+        return `${r.card} | ${status} | ${r.message || 'N/A'}`;
+      });
+      
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', `attachment; filename="nexus-results-${Date.now()}.txt"`);
+      res.send(lines.join('\n'));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Initialize Telegram bot (webhook in production, polling in development)
   initBot();
 

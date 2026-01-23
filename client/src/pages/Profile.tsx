@@ -20,6 +20,7 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  Gift,
 } from "lucide-react";
 
 type ChartType = "bar" | "donut" | "area";
@@ -510,7 +511,7 @@ export default function Profile() {
           <Link href="/">
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-home"
             >
               <div className="p-2">
@@ -519,10 +520,22 @@ export default function Profile() {
               <span className="text-[10px] font-medium text-muted-foreground">Home</span>
             </motion.button>
           </Link>
+          <Link href="/rewards">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
+              data-testid="nav-rewards"
+            >
+              <div className="p-2">
+                <Gift className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <span className="text-[10px] font-medium text-muted-foreground">Rewards</span>
+            </motion.button>
+          </Link>
           <Link href="/profile">
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-profile"
             >
               <div className="p-2 rounded-xl bg-primary/10">
@@ -534,7 +547,7 @@ export default function Profile() {
           <Link href="/settings">
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-settings"
             >
               <div className="p-2">

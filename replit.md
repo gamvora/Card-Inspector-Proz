@@ -6,7 +6,30 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 
 ## Recent Changes (January 2026)
 
-### Interactive Tutorial System (Latest)
+### Rewards & Engagement System (Latest)
+- **Daily Spin Wheel**: Spin once per day for free credits (prizes: 20, 30, 40, 60, 85, 110 credits)
+- **Daily Streak**: Claim daily rewards with increasing bonuses (Day1=30, Day3=45, Day7=70, Day14=110, Day30=210 credits)
+- **Referral System**: Share unique code (NX + 6 chars) to earn 100 credits per new user; referred users get 50 credits bonus
+- **Dedicated Rewards Page**: New page at `/rewards` with spin wheel, streak tracker, and referral management
+
+### BIN Lookup Tool
+- Search BIN (first 6 digits) to view card information
+- Shows card scheme (Visa/MC), type (credit/debit), prepaid status
+- Displays issuing bank name and country with flag emoji
+- Located in Settings page
+
+### Export Results Feature
+- Export approved or declined results to .txt file
+- Download button appears when results are available
+- Format: card | status | message
+
+### Notification Settings
+- Toggle APPROVED card alerts via Telegram
+- Toggle daily summary reports
+- Toggle streak reminder notifications
+- Settings persisted in database
+
+### Interactive Tutorial System
 - **6-Step Tutorial**: Welcome, Cards, Site Selection, Start, Results, Settings
 - **Auto-launch**: Tutorial shows automatically for first-time users (hasSeenTutorial flag)
 - **Manual Restart**: HelpCircle button in header (purple icon) to restart tutorial anytime
@@ -57,7 +80,7 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - Real-time statistics display
 
 ### UI Improvements (January 2026)
-- Clean mobile-first design with bottom navigation (Home, Profile, Settings)
+- Clean mobile-first design with bottom navigation (Home, Rewards, Profile, Settings)
 - Header with credits balance, total approved/declined stats
 - Card input textarea with card count display and file upload support (.txt files)
 - Neon border animation on card input when focused

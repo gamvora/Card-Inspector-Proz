@@ -88,6 +88,10 @@ interface ProxyTestResult {
 }
 
 import { useCheckerContext } from "@/lib/checker-context";
+import { BinLookup } from "@/components/BinLookup";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Gift, Bell } from "lucide-react";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -115,6 +119,32 @@ export default function Settings() {
     queryFn: async () => {
       const res = await authFetch('/api/proxies');
       return res.json();
+    },
+  });
+
+  const { data: notifSettings } = useQuery<{
+    approvedAlerts: boolean;
+    dailySummary: boolean;
+    streakReminder: boolean;
+  }>({
+    queryKey: ['/api/notifications/settings'],
+    queryFn: async () => {
+      const res = await authFetch('/api/notifications/settings');
+      return res.json();
+    },
+  });
+
+  const updateNotificationsMutation = useMutation({
+    mutationFn: async (settings: { approvedAlerts?: boolean; dailySummary?: boolean; streakReminder?: boolean }) => {
+      const res = await authFetch('/api/notifications/settings', {
+        method: 'POST',
+        body: JSON.stringify(settings),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/settings'] });
+      toast({ title: 'Settings saved', soundType: 'success' });
     },
   });
 
@@ -712,6 +742,79 @@ export default function Settings() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
         >
+          <BinLookup />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <Card className="p-5 rounded-2xl border-border bg-card shadow-lg overflow-hidden">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Telegram Notifications</h3>
+                <p className="text-xs text-muted-foreground">Manage your alert preferences</p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                  <Label htmlFor="approved-alerts" className="text-sm cursor-pointer">
+                    Approved Card Alerts
+                  </Label>
+                </div>
+                <Switch
+                  id="approved-alerts"
+                  checked={notifSettings?.approvedAlerts ?? true}
+                  onCheckedChange={(checked) => updateNotificationsMutation.mutate({ approvedAlerts: checked })}
+                  data-testid="switch-approved-alerts"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Activity className="w-4 h-4 text-blue-500" />
+                  <Label htmlFor="daily-summary" className="text-sm cursor-pointer">
+                    Daily Summary Report
+                  </Label>
+                </div>
+                <Switch
+                  id="daily-summary"
+                  checked={notifSettings?.dailySummary ?? false}
+                  onCheckedChange={(checked) => updateNotificationsMutation.mutate({ dailySummary: checked })}
+                  data-testid="switch-daily-summary"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Gift className="w-4 h-4 text-purple-500" />
+                  <Label htmlFor="streak-reminder" className="text-sm cursor-pointer">
+                    Streak Reminder
+                  </Label>
+                </div>
+                <Switch
+                  id="streak-reminder"
+                  checked={notifSettings?.streakReminder ?? true}
+                  onCheckedChange={(checked) => updateNotificationsMutation.mutate({ streakReminder: checked })}
+                  data-testid="switch-streak-reminder"
+                />
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+        >
           <Card className="p-5 rounded-2xl border-border bg-card shadow-lg overflow-hidden">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
@@ -765,7 +868,7 @@ export default function Settings() {
           <Link href="/">
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-home"
             >
               <div className="p-2">
@@ -774,10 +877,22 @@ export default function Settings() {
               <span className="text-[10px] font-medium text-muted-foreground">Home</span>
             </motion.button>
           </Link>
+          <Link href="/rewards">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
+              data-testid="nav-rewards"
+            >
+              <div className="p-2">
+                <Gift className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <span className="text-[10px] font-medium text-muted-foreground">Rewards</span>
+            </motion.button>
+          </Link>
           <Link href="/profile">
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-profile"
             >
               <div className="p-2">
@@ -789,7 +904,7 @@ export default function Settings() {
           <Link href="/settings">
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 py-1 px-8"
+              className="flex flex-col items-center gap-1.5 py-1 px-6"
               data-testid="nav-settings"
             >
               <div className="p-2 rounded-xl bg-purple-500/10">
