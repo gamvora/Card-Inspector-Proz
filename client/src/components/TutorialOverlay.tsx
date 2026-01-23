@@ -415,12 +415,13 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
         )}
 
         <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 20, scale: 0.95 }}
-          className="fixed inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-sm bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl shadow-2xl border border-slate-700/50 overflow-hidden z-[10000]"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="fixed inset-0 flex items-center justify-center p-6 z-[10000] pointer-events-none"
         >
-          <div className="p-5">
+          <div className="w-full max-w-xs bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-2xl border border-slate-700/50 overflow-hidden pointer-events-auto">
+          <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
@@ -497,6 +498,7 @@ export default function TutorialOverlay({ isOpen, onClose, onComplete }: Tutoria
                 </Button>
               </div>
             </div>
+          </div>
           </div>
         </motion.div>
       </motion.div>
