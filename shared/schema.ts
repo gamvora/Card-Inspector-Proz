@@ -17,6 +17,8 @@ export const users = pgTable("users", {
   totalRejected: integer("total_rejected").default(0).notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
   hasSeenTutorial: boolean("has_seen_tutorial").default(false).notNull(),
+  referralCode: varchar("referral_code", { length: 20 }).unique(),
+  referredBy: integer("referred_by"),
   createdAt: timestamp("created_at").defaultNow(),
   lastActiveAt: timestamp("last_active_at").defaultNow(),
 });
@@ -87,6 +89,44 @@ export const creditTransactions = pgTable("credit_transactions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Referral system
+export const referrals = pgTable("referrals", {
+  id: serial("id").primaryKey(),
+  referrerId: integer("referrer_id").notNull(),
+  referredId: integer("referred_id").notNull(),
+  referralCode: varchar("referral_code", { length: 20 }).notNull(),
+  creditsAwarded: integer("credits_awarded").default(100).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Daily spin wheel
+export const dailySpins = pgTable("daily_spins", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  creditsWon: integer("credits_won").notNull(),
+  spinDate: timestamp("spin_date").defaultNow(),
+});
+
+// Daily streak tracking
+export const dailyStreaks = pgTable("daily_streaks", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().unique(),
+  currentStreak: integer("current_streak").default(0).notNull(),
+  longestStreak: integer("longest_streak").default(0).notNull(),
+  lastClaimDate: timestamp("last_claim_date"),
+  totalClaimed: integer("total_claimed").default(0).notNull(),
+});
+
+// User notification settings
+export const notificationSettings = pgTable("notification_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().unique(),
+  approvedAlerts: boolean("approved_alerts").default(true).notNull(),
+  dailySummary: boolean("daily_summary").default(false).notNull(),
+  streakReminder: boolean("streak_reminder").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // === SCHEMAS ===
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, lastActiveAt: true });
 export const insertSiteSchema = createInsertSchema(sites).omit({ id: true, createdAt: true });
@@ -95,6 +135,10 @@ export const insertSettingsSchema = createInsertSchema(settings).omit({ id: true
 export const insertResultSchema = createInsertSchema(results).omit({ id: true, createdAt: true });
 export const insertCheckSessionSchema = createInsertSchema(checkSessions).omit({ id: true, createdAt: true, completedAt: true });
 export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ id: true, createdAt: true });
+export const insertReferralSchema = createInsertSchema(referrals).omit({ id: true, createdAt: true });
+export const insertDailySpinSchema = createInsertSchema(dailySpins).omit({ id: true, spinDate: true });
+export const insertDailyStreakSchema = createInsertSchema(dailyStreaks).omit({ id: true });
+export const insertNotificationSettingsSchema = createInsertSchema(notificationSettings).omit({ id: true, updatedAt: true });
 
 // === TYPES ===
 export type User = typeof users.$inferSelect;
@@ -110,6 +154,14 @@ export type InsertResult = z.infer<typeof insertResultSchema>;
 export type CheckSession = typeof checkSessions.$inferSelect;
 export type InsertCheckSession = z.infer<typeof insertCheckSessionSchema>;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
+export type Referral = typeof referrals.$inferSelect;
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type DailySpin = typeof dailySpins.$inferSelect;
+export type InsertDailySpin = z.infer<typeof insertDailySpinSchema>;
+export type DailyStreak = typeof dailyStreaks.$inferSelect;
+export type InsertDailyStreak = z.infer<typeof insertDailyStreakSchema>;
+export type NotificationSettings = typeof notificationSettings.$inferSelect;
+export type InsertNotificationSettings = z.infer<typeof insertNotificationSettingsSchema>;
 
 // Admin ID constant
 export const ADMIN_TELEGRAM_ID = "5197976453";
