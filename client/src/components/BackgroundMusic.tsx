@@ -1,12 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
 import { Volume2, VolumeX } from 'lucide-react';
 
-const MUSIC_TRACKS = [
-  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
-];
+const LOFI_STREAM = 'https://stream.zeno.fm/0r0xa792kwzuv';
 
 declare global {
   interface Window {
@@ -22,48 +17,51 @@ export function BackgroundMusic() {
   });
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const trackIndexRef = useRef(0);
 
   useEffect(() => {
     if (!window.backgroundAudio) {
       const audio = new Audio();
       audio.loop = true;
-      audio.volume = 0.15;
+      audio.volume = 0.12;
+      audio.crossOrigin = 'anonymous';
       window.backgroundAudio = audio;
     }
     
     audioRef.current = window.backgroundAudio;
     const audio = audioRef.current;
-    audio.volume = 0.15;
-    audio.loop = true;
+    audio.volume = 0.12;
 
-    if (!audio.src) {
-      trackIndexRef.current = Math.floor(Math.random() * MUSIC_TRACKS.length);
-      audio.src = MUSIC_TRACKS[trackIndexRef.current];
+    if (!audio.src || audio.src === '') {
+      audio.src = LOFI_STREAM;
     }
 
     const savedMuted = localStorage.getItem('backgroundMusicMuted') === 'true';
     window.backgroundMusicMuted = savedMuted;
     setIsMuted(savedMuted);
     
-    if (!savedMuted && audio.paused) {
-      const playPromise = audio.play();
-      if (playPromise) {
-        playPromise.then(() => setIsPlaying(true)).catch(() => {
-          const handleClick = () => {
-            if (!window.backgroundMusicMuted && audioRef.current) {
-              audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-            }
-            document.removeEventListener('click', handleClick);
-          };
-          document.addEventListener('click', handleClick);
-        });
+    const tryPlay = () => {
+      if (!window.backgroundMusicMuted && audioRef.current) {
+        audioRef.current.play()
+          .then(() => setIsPlaying(true))
+          .catch(() => {});
       }
+    };
+
+    if (!savedMuted && audio.paused) {
+      audio.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          document.addEventListener('click', tryPlay, { once: true });
+          document.addEventListener('touchstart', tryPlay, { once: true });
+        });
     } else if (!savedMuted && !audio.paused) {
       setIsPlaying(true);
     }
 
-    return () => {};
+    return () => {
+      document.removeEventListener('click', tryPlay);
+      document.removeEventListener('touchstart', tryPlay);
+    };
   }, []);
 
   useEffect(() => {
@@ -84,25 +82,29 @@ export function BackgroundMusic() {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-[99999]">
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={toggleMute}
-        className="relative h-10 w-10 rounded-full bg-background shadow-xl border-2 border-primary/30"
-        data-testid="button-toggle-music"
-      >
-        {isMuted ? (
-          <VolumeX className="h-5 w-5 text-muted-foreground" />
-        ) : (
-          <>
-            <Volume2 className="h-5 w-5 text-primary" />
-            {isPlaying && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse border-2 border-background" />
-            )}
-          </>
-        )}
-      </Button>
-    </div>
+    <button
+      onClick={toggleMute}
+      className="fixed bottom-20 left-4 z-[99999] flex items-center gap-2 px-3 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/10 shadow-lg transition-all duration-300 hover:bg-black/70 hover:scale-105 active:scale-95"
+      data-testid="button-toggle-music"
+    >
+      {isMuted ? (
+        <>
+          <VolumeX className="h-4 w-4 text-white/60" />
+          <span className="text-xs text-white/60 font-medium">Music Off</span>
+        </>
+      ) : (
+        <>
+          <Volume2 className="h-4 w-4 text-white" />
+          <span className="text-xs text-white font-medium">Lofi</span>
+          {isPlaying && (
+            <span className="flex gap-0.5">
+              <span className="w-1 h-3 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-2 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-3 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+            </span>
+          )}
+        </>
+      )}
+    </button>
   );
 }
