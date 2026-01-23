@@ -21,6 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   Gift,
+  Star,
+  Shield,
 } from "lucide-react";
 
 type ChartType = "bar" | "donut" | "area";
@@ -48,6 +50,7 @@ interface OnlineUser {
   username: string | null;
   firstName: string | null;
   photoUrl: string | null;
+  isAdmin?: boolean;
 }
 
 export default function Profile() {
@@ -89,7 +92,7 @@ export default function Profile() {
       if (!res.ok) return [];
       return res.json();
     },
-    refetchInterval: 15000,
+    refetchInterval: 10000, // Update every 10 seconds
   });
 
   const totalChecked = (userStats?.totalCharged || 0) + (userStats?.totalRejected || 0);
@@ -150,20 +153,47 @@ export default function Profile() {
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted/50 transition-colors"
+                    className={`flex items-center gap-3 p-2 rounded-xl hover:bg-muted/50 transition-colors ${
+                      onlineUser.isAdmin ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30' : ''
+                    }`}
                     data-testid={`online-user-${onlineUser.telegramId}`}
                   >
                     <div className="relative">
-                      <Avatar className="w-10 h-10 border-2 border-background">
+                      <Avatar className={`w-10 h-10 border-2 ${onlineUser.isAdmin ? 'border-amber-500' : 'border-background'}`}>
                         <AvatarImage src={onlineUser.photoUrl || undefined} alt={onlineUser.firstName || "User"} />
-                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/20 text-sm font-bold">
+                        <AvatarFallback className={`text-sm font-bold ${
+                          onlineUser.isAdmin 
+                            ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white' 
+                            : 'bg-gradient-to-br from-primary/20 to-accent/20'
+                        }`}>
                           {onlineUser.firstName?.[0] || onlineUser.username?.[0] || "U"}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-background" />
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${
+                        onlineUser.isAdmin ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`} />
+                      {onlineUser.isAdmin && (
+                        <div className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center border-2 border-background shadow-lg">
+                          <Crown className="w-2.5 h-2.5 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate">{onlineUser.firstName || "User"}</p>
+                      <div className="flex items-center gap-2">
+                        <p className={`font-semibold text-sm truncate ${onlineUser.isAdmin ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                          {onlineUser.firstName || "User"}
+                        </p>
+                        {onlineUser.isAdmin && (
+                          <motion.span 
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30 flex items-center gap-1"
+                          >
+                            <Star className="w-2.5 h-2.5 fill-current" />
+                            OWNER
+                          </motion.span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground truncate">@{onlineUser.username || onlineUser.telegramId}</p>
                     </div>
                   </motion.div>

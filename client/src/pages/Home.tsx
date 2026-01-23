@@ -83,6 +83,7 @@ export default function Home() {
   const notifiedCardsRef = useRef<Set<number>>(new Set());
   const [isFocused, setIsFocused] = useState(false);
   const [showCardsHelp, setShowCardsHelp] = useState(false);
+  const [showCreditsDialog, setShowCreditsDialog] = useState(false);
 
   const { data: sites = [] } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -175,6 +176,83 @@ export default function Home() {
     }
   };
 
+  // Luhn algorithm for card validation
+  const luhnCheck = (cardNum: string): boolean => {
+    const digits = cardNum.replace(/\D/g, '');
+    let sum = 0;
+    let isEven = false;
+    
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let digit = parseInt(digits[i], 10);
+      
+      if (isEven) {
+        digit *= 2;
+        if (digit > 9) {
+          digit -= 9;
+        }
+      }
+      
+      sum += digit;
+      isEven = !isEven;
+    }
+    
+    return sum % 10 === 0;
+  };
+
+  // Extract card from various formats
+  const extractCard = (line: string): string | null => {
+    // Remove extra whitespace
+    let cleaned = line.trim();
+    
+    // Try standard format: card|month|year|cvv
+    let parts = cleaned.split('|');
+    if (parts.length >= 4) {
+      const [cardNum, expMonth, expYear, cvv] = parts;
+      const cleanCard = cardNum.replace(/\s/g, '');
+      const cleanMonth = expMonth.replace(/\D/g, '');
+      const cleanYear = expYear.replace(/\D/g, '');
+      const cleanCvv = cvv.replace(/\D/g, '');
+      return `${cleanCard}|${cleanMonth}|${cleanYear}|${cleanCvv}`;
+    }
+    
+    // Try colon format: card:month:year:cvv
+    parts = cleaned.split(':');
+    if (parts.length >= 4) {
+      const [cardNum, expMonth, expYear, cvv] = parts;
+      const cleanCard = cardNum.replace(/\s/g, '');
+      const cleanMonth = expMonth.replace(/\D/g, '');
+      const cleanYear = expYear.replace(/\D/g, '');
+      const cleanCvv = cvv.replace(/\D/g, '');
+      return `${cleanCard}|${cleanMonth}|${cleanYear}|${cleanCvv}`;
+    }
+    
+    // Try space format: card month year cvv
+    parts = cleaned.split(/\s+/);
+    if (parts.length >= 4) {
+      const [cardNum, expMonth, expYear, cvv] = parts;
+      const cleanCard = cardNum.replace(/\s/g, '');
+      const cleanMonth = expMonth.replace(/\D/g, '');
+      const cleanYear = expYear.replace(/\D/g, '');
+      const cleanCvv = cvv.replace(/\D/g, '');
+      return `${cleanCard}|${cleanMonth}|${cleanYear}|${cleanCvv}`;
+    }
+    
+    // Try to extract from messy format using regex
+    const cardMatch = cleaned.match(/(\d{13,19})/);
+    const expMatch = cleaned.match(/(\d{1,2})[\/\-]?(\d{2,4})/);
+    const cvvMatch = cleaned.match(/\D(\d{3,4})$/);
+    
+    if (cardMatch && expMatch && cvvMatch) {
+      const card = cardMatch[1];
+      const month = expMatch[1].padStart(2, '0');
+      const year = expMatch[2];
+      const cvv = cvvMatch[1];
+      return `${card}|${month}|${year}|${cvv}`;
+    }
+    
+    return null;
+  };
+
   const cleanCards = () => {
     const lines = cardsInputState.split('\n').map(l => l.trim()).filter(l => l);
     const validCards: string[] = [];
@@ -182,12 +260,21 @@ export default function Home() {
     let removedDuplicates = 0;
     let removedExpired = 0;
     let removedInvalid = 0;
+    let removedLuhn = 0;
+    let fixedFormat = 0;
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
 
     for (const line of lines) {
-      const parts = line.split('|');
+      // Try to extract card from various formats
+      const extracted = extractCard(line);
+      if (!extracted) {
+        removedInvalid++;
+        continue;
+      }
+      
+      const parts = extracted.split('|');
       if (parts.length < 4) {
         removedInvalid++;
         continue;
@@ -199,6 +286,12 @@ export default function Home() {
       const cleanCardNum = cardNum.replace(/\s/g, '');
       if (!/^\d{13,19}$/.test(cleanCardNum)) {
         removedInvalid++;
+        continue;
+      }
+      
+      // Luhn validation
+      if (!luhnCheck(cleanCardNum)) {
+        removedLuhn++;
         continue;
       }
 
@@ -230,16 +323,34 @@ export default function Home() {
         continue;
       }
       seen.add(cardKey);
-      validCards.push(line);
+      
+      // Format the card properly
+      const formattedMonth = month.toString().padStart(2, '0');
+      const formattedYear = year.toString().slice(-2);
+      const formattedCard = `${cleanCardNum}|${formattedMonth}|${formattedYear}|${cvv}`;
+      
+      // Track if format was fixed
+      if (formattedCard !== line.trim()) {
+        fixedFormat++;
+      }
+      
+      validCards.push(formattedCard);
     }
 
     handleCardsInputChange(validCards.join('\n'));
     
-    const total = removedDuplicates + removedExpired + removedInvalid;
-    if (total > 0) {
+    const total = removedDuplicates + removedExpired + removedInvalid + removedLuhn;
+    if (total > 0 || fixedFormat > 0) {
+      const messages = [];
+      if (removedDuplicates > 0) messages.push(`${removedDuplicates} duplicates`);
+      if (removedExpired > 0) messages.push(`${removedExpired} expired`);
+      if (removedLuhn > 0) messages.push(`${removedLuhn} invalid (Luhn)`);
+      if (removedInvalid > 0) messages.push(`${removedInvalid} invalid format`);
+      if (fixedFormat > 0) messages.push(`${fixedFormat} fixed`);
+      
       toast({
         title: "Cards Cleaned",
-        description: `Removed: ${removedDuplicates} duplicates, ${removedExpired} expired, ${removedInvalid} invalid`,
+        description: messages.join(', '),
         soundType: 'success',
       });
     } else {
@@ -327,9 +438,12 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center justify-between mb-4"
         >
-          <motion.div 
+          <motion.button 
             whileHover={{ scale: 1.02 }}
-            className="flex items-center gap-2 bg-gradient-to-r from-emerald-500/10 to-emerald-400/5 px-3 py-1.5 rounded-full border border-emerald-500/20"
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowCreditsDialog(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-500/10 to-emerald-400/5 px-3 py-1.5 rounded-full border border-emerald-500/20 cursor-pointer"
+            data-testid="button-credits"
           >
             <Coins className="w-4 h-4 text-emerald-500" />
             <motion.span 
@@ -341,7 +455,8 @@ export default function Home() {
             >
               {user?.credits || 0}
             </motion.span>
-          </motion.div>
+            <HelpCircle className="w-3 h-3 text-emerald-500/50" />
+          </motion.button>
           
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-4 text-xs">
@@ -1114,6 +1229,97 @@ export default function Home() {
                     <li>• Always clean cards before checking to save credits</li>
                     <li>• Each card check costs 1 credit</li>
                   </ul>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Credits Dialog */}
+      <AnimatePresence>
+        {showCreditsDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowCreditsDialog(false)}
+            data-testid="overlay-credits-dialog"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-card border border-border rounded-3xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+              data-testid="popup-credits-dialog"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-emerald-500" />
+                  Get Credits
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowCreditsDialog(false)}
+                  className="rounded-xl"
+                  data-testid="button-close-credits-dialog"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground text-center">
+                  Need more credits? Here's how to get them:
+                </p>
+
+                {/* Daily Rewards Option */}
+                <Link href="/rewards" onClick={() => setShowCreditsDialog(false)}>
+                  <motion.div 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 cursor-pointer"
+                    data-testid="button-credits-rewards"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                      <Gift className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">Daily Rewards</p>
+                      <p className="text-xs text-muted-foreground">Spin wheel, streaks & referrals</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                  </motion.div>
+                </Link>
+
+                {/* Contact Admin Option */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    window.open('https://t.me/lucee7', '_blank');
+                    setShowCreditsDialog(false);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/30 cursor-pointer"
+                  data-testid="button-credits-contact"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                    <MessageCircle className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-bold text-sm">Contact Admin</p>
+                    <p className="text-xs text-muted-foreground">@lucee7 on Telegram</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </motion.button>
+
+                {/* Current Credits Display */}
+                <div className="text-center pt-2">
+                  <p className="text-xs text-muted-foreground">Your current balance</p>
+                  <p className="text-2xl font-bold text-emerald-500">{user?.credits || 0} Credits</p>
                 </div>
               </div>
             </motion.div>
