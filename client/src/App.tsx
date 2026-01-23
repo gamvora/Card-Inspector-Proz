@@ -8,7 +8,7 @@ import { ThemeProvider } from "@/lib/ThemeProvider";
 import { CheckerProvider } from "@/lib/checker-context";
 import { TutorialProvider } from "@/lib/tutorial-context";
 import { useState, useEffect } from "react";
-import { BackgroundMusic } from "@/components/BackgroundMusic";
+import { initBackgroundMusic } from "@/components/BackgroundMusic";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -19,6 +19,10 @@ function AppContent() {
   const { isLoading, isAuthenticated, user } = useAuth();
   const [showLoading, setShowLoading] = useState(true);
   const [loadingComplete, setLoadingComplete] = useState(false);
+
+  useEffect(() => {
+    initBackgroundMusic();
+  }, []);
 
   useEffect(() => {
     if (!isLoading && loadingComplete) {
@@ -49,7 +53,6 @@ function App() {
             <TutorialProvider>
               <TooltipProvider>
                 <div className="min-h-screen bg-background text-foreground">
-                  <BackgroundMusic />
                   <AppContent />
                   <Toaster />
                 </div>

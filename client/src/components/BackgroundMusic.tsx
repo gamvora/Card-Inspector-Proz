@@ -3,6 +3,36 @@ import { Volume2, VolumeX } from 'lucide-react';
 
 const LOFI_STREAM = 'https://stream.zeno.fm/0r0xa792kwzuv';
 
+// Initialize audio globally once
+export function initBackgroundMusic() {
+  if (!window.backgroundAudio) {
+    const audio = new Audio();
+    audio.loop = true;
+    audio.volume = 0.08;
+    audio.crossOrigin = 'anonymous';
+    audio.src = LOFI_STREAM;
+    window.backgroundAudio = audio;
+    
+    const savedMuted = localStorage.getItem('backgroundMusicMuted') === 'true';
+    window.backgroundMusicMuted = savedMuted;
+    
+    if (!savedMuted) {
+      const tryPlay = () => {
+        if (window.backgroundAudio && !window.backgroundMusicMuted) {
+          window.backgroundAudio.play().catch(() => {});
+        }
+        document.removeEventListener('click', tryPlay);
+        document.removeEventListener('touchstart', tryPlay);
+      };
+      
+      window.backgroundAudio.play().catch(() => {
+        document.addEventListener('click', tryPlay, { once: true });
+        document.addEventListener('touchstart', tryPlay, { once: true });
+      });
+    }
+  }
+}
+
 declare global {
   interface Window {
     backgroundAudio: HTMLAudioElement | null;
@@ -10,97 +40,58 @@ declare global {
   }
 }
 
-export function BackgroundMusic() {
+// Button component for Home page only
+export function MusicToggleButton() {
   const [isMuted, setIsMuted] = useState(() => {
-    const saved = localStorage.getItem('backgroundMusicMuted');
-    return saved === 'true';
+    return localStorage.getItem('backgroundMusicMuted') === 'true';
   });
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (!window.backgroundAudio) {
-      const audio = new Audio();
-      audio.loop = true;
-      audio.volume = 0.12;
-      audio.crossOrigin = 'anonymous';
-      window.backgroundAudio = audio;
-    }
-    
-    audioRef.current = window.backgroundAudio;
-    const audio = audioRef.current;
-    audio.volume = 0.12;
+    const checkPlaying = () => {
+      if (window.backgroundAudio) {
+        setIsPlaying(!window.backgroundAudio.paused);
+      }
+    };
+    checkPlaying();
+    const interval = setInterval(checkPlaying, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-    if (!audio.src || audio.src === '') {
-      audio.src = LOFI_STREAM;
-    }
-
-    const savedMuted = localStorage.getItem('backgroundMusicMuted') === 'true';
-    window.backgroundMusicMuted = savedMuted;
-    setIsMuted(savedMuted);
+  const toggleMute = () => {
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    localStorage.setItem('backgroundMusicMuted', newMuted.toString());
+    window.backgroundMusicMuted = newMuted;
     
-    const tryPlay = () => {
-      if (!window.backgroundMusicMuted && audioRef.current) {
-        audioRef.current.play()
+    if (window.backgroundAudio) {
+      if (newMuted) {
+        window.backgroundAudio.pause();
+        setIsPlaying(false);
+      } else {
+        window.backgroundAudio.play()
           .then(() => setIsPlaying(true))
           .catch(() => {});
       }
-    };
-
-    if (!savedMuted && audio.paused) {
-      audio.play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {
-          document.addEventListener('click', tryPlay, { once: true });
-          document.addEventListener('touchstart', tryPlay, { once: true });
-        });
-    } else if (!savedMuted && !audio.paused) {
-      setIsPlaying(true);
     }
-
-    return () => {
-      document.removeEventListener('click', tryPlay);
-      document.removeEventListener('touchstart', tryPlay);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      if (isMuted) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-      }
-    }
-    localStorage.setItem('backgroundMusicMuted', isMuted.toString());
-    window.backgroundMusicMuted = isMuted;
-  }, [isMuted]);
-
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
   };
 
   return (
     <button
       onClick={toggleMute}
-      className="fixed bottom-20 left-4 z-[99999] flex items-center gap-2 px-3 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/10 shadow-lg transition-all duration-300 hover:bg-black/70 hover:scale-105 active:scale-95"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 transition-all duration-200 hover:scale-105 active:scale-95"
       data-testid="button-toggle-music"
     >
       {isMuted ? (
-        <>
-          <VolumeX className="h-4 w-4 text-white/60" />
-          <span className="text-xs text-white/60 font-medium">Music Off</span>
-        </>
+        <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />
       ) : (
         <>
-          <Volume2 className="h-4 w-4 text-white" />
-          <span className="text-xs text-white font-medium">Lofi</span>
+          <Volume2 className="h-3.5 w-3.5 text-purple-500" />
           {isPlaying && (
-            <span className="flex gap-0.5">
-              <span className="w-1 h-3 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-2 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-3 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+            <span className="flex gap-[2px] items-end h-3">
+              <span className="w-[3px] h-full bg-purple-500 rounded-full animate-pulse" />
+              <span className="w-[3px] h-2 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+              <span className="w-[3px] h-2.5 bg-purple-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
             </span>
           )}
         </>

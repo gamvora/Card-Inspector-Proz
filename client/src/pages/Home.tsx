@@ -34,6 +34,7 @@ import { useAuth, authFetch } from "@/lib/auth";
 import { useTutorial } from "@/lib/tutorial-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { HelpCircle } from "lucide-react";
+import { MusicToggleButton } from "@/components/BackgroundMusic";
 
 interface Site {
   id: number;
@@ -358,6 +359,8 @@ export default function Home() {
                 </span>
               </motion.div>
             </div>
+            
+            <MusicToggleButton />
             
             <motion.button
               whileHover={{ scale: 1.1 }}
