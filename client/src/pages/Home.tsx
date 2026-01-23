@@ -909,18 +909,147 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Video Tutorial */}
+                {/* Interactive Animation Tutorial */}
                 <div className="space-y-3">
-                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Video Tutorial</h3>
-                  <div className="rounded-xl overflow-hidden border border-border bg-muted/30">
-                    <div className="aspect-video flex items-center justify-center bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                      <div className="text-center p-4">
-                        <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-purple-500/20 flex items-center justify-center">
-                          <Play className="w-8 h-8 text-purple-500" />
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">How It Works</h3>
+                  <div className="rounded-xl overflow-hidden border border-border bg-gradient-to-br from-slate-900 to-slate-800 p-4">
+                    {/* Animated Demo */}
+                    <div className="space-y-4">
+                      {/* Step 1: Paste Cards */}
+                      <motion.div 
+                        className="flex items-start gap-3"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 }}
+                      >
+                        <div className="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">1</div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white mb-2">Paste your cards</p>
+                          <motion.div 
+                            className="bg-slate-700/50 rounded-lg p-2 font-mono text-[10px] text-green-400 overflow-hidden"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.5 }}
+                          >
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: [0, 1, 1, 1] }}
+                              transition={{ delay: 0.7, duration: 2, times: [0, 0.1, 0.5, 1] }}
+                            >
+                              4111111111111111|12|2025|123
+                            </motion.div>
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: [0, 1, 1, 1] }}
+                              transition={{ delay: 1.2, duration: 2, times: [0, 0.1, 0.5, 1] }}
+                            >
+                              5500000000000004|08|26|456
+                            </motion.div>
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: [0, 1, 1, 1] }}
+                              transition={{ delay: 1.7, duration: 2, times: [0, 0.1, 0.5, 1] }}
+                              className="text-red-400 line-through"
+                            >
+                              4111111111111111|01|2020|999
+                            </motion.div>
+                          </motion.div>
                         </div>
-                        <p className="text-sm font-medium">Tutorial Coming Soon</p>
-                        <p className="text-xs text-muted-foreground mt-1">Watch how to use the card checker</p>
-                      </div>
+                      </motion.div>
+
+                      {/* Step 2: Clean Cards */}
+                      <motion.div 
+                        className="flex items-start gap-3"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 2.2 }}
+                      >
+                        <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">2</div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white mb-2">Click Clean button</p>
+                          <div className="flex items-center gap-2">
+                            <motion.div 
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30"
+                              animate={{ 
+                                scale: [1, 1.1, 1],
+                                boxShadow: ['0 0 0 0 rgba(245, 158, 11, 0)', '0 0 0 8px rgba(245, 158, 11, 0.3)', '0 0 0 0 rgba(245, 158, 11, 0)']
+                              }}
+                              transition={{ delay: 2.5, duration: 1, repeat: Infinity, repeatDelay: 3 }}
+                            >
+                              <Eraser className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="text-xs font-medium text-amber-500">Clean</span>
+                            </motion.div>
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: 3.5 }}
+                              className="flex items-center gap-1 text-[10px] text-green-400"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Expired removed!</span>
+                            </motion.div>
+                          </div>
+                        </div>
+                      </motion.div>
+
+                      {/* Step 3: Start Check */}
+                      <motion.div 
+                        className="flex items-start gap-3"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 4 }}
+                      >
+                        <div className="w-7 h-7 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">3</div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white mb-2">Start checking</p>
+                          <div className="flex items-center gap-2">
+                            <motion.div 
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30"
+                              animate={{ 
+                                scale: [1, 1.1, 1],
+                                boxShadow: ['0 0 0 0 rgba(34, 197, 94, 0)', '0 0 0 8px rgba(34, 197, 94, 0.3)', '0 0 0 0 rgba(34, 197, 94, 0)']
+                              }}
+                              transition={{ delay: 4.3, duration: 1, repeat: Infinity, repeatDelay: 3 }}
+                            >
+                              <Play className="w-3.5 h-3.5 text-green-500" />
+                              <span className="text-xs font-medium text-green-500">Start</span>
+                            </motion.div>
+                          </div>
+                        </div>
+                      </motion.div>
+
+                      {/* Step 4: Results */}
+                      <motion.div 
+                        className="flex items-start gap-3"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 5 }}
+                      >
+                        <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">4</div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white mb-2">View results</p>
+                          <div className="space-y-1.5">
+                            <motion.div 
+                              className="flex items-center gap-2 px-2 py-1 rounded bg-green-500/20 border border-green-500/30"
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 5.5 }}
+                            >
+                              <CheckCircle2 className="w-3 h-3 text-green-500" />
+                              <span className="text-[10px] font-mono text-green-400">4111****1111 - APPROVED</span>
+                            </motion.div>
+                            <motion.div 
+                              className="flex items-center gap-2 px-2 py-1 rounded bg-red-500/20 border border-red-500/30"
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 6 }}
+                            >
+                              <XCircle className="w-3 h-3 text-red-500" />
+                              <span className="text-[10px] font-mono text-red-400">5500****0004 - DECLINED</span>
+                            </motion.div>
+                          </div>
+                        </div>
+                      </motion.div>
                     </div>
                   </div>
                 </div>
