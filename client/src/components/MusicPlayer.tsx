@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,220 +15,147 @@ import {
   VolumeX, 
   Repeat, 
   Loader2,
-  Disc3,
-  ExternalLink,
-  Wifi,
-  WifiOff
+  Music,
+  Disc3
 } from 'lucide-react';
-import { SiSpotify } from 'react-icons/si';
 
-interface SpotifyTrack {
+interface Song {
   id: string;
-  uri: string;
   title: string;
-  artist: string;
-  album: string;
   thumbnail: string;
   duration: string;
-  durationMs?: number;
-  previewUrl: string | null;
-  externalUrl: string;
+  channel: string;
 }
 
 declare global {
   interface Window {
-    Spotify: any;
-    onSpotifyWebPlaybackSDKReady: () => void;
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
   }
 }
 
 export function MusicPlayer() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SpotifyTrack[]>([]);
+  const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<SpotifyTrack | null>(null);
+  const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(50);
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [playerReady, setPlayerReady] = useState(false);
   
   const playerRef = useRef<any>(null);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // Load saved settings
   useEffect(() => {
-    const savedTrack = localStorage.getItem('currentSpotifyTrack');
+    const savedSong = localStorage.getItem('currentSong');
     const savedVolume = localStorage.getItem('musicVolume');
     const savedLoop = localStorage.getItem('musicLoop');
     
-    if (savedTrack) {
+    if (savedSong) {
       try {
-        setCurrentTrack(JSON.parse(savedTrack));
+        setCurrentSong(JSON.parse(savedSong));
       } catch (e) {}
     }
     if (savedVolume) setVolume(parseInt(savedVolume));
     if (savedLoop) setIsLooping(savedLoop === 'true');
   }, []);
 
-  // Get Spotify access token
-  const getAccessToken = useCallback(async () => {
-    try {
-      const response = await authFetch('/api/spotify/token');
-      const data = await response.json();
-      if (data.accessToken) {
-        setAccessToken(data.accessToken);
-        return data.accessToken;
-      }
-    } catch (error) {
-      console.error('Failed to get Spotify token:', error);
+  useEffect(() => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+      
+      window.onYouTubeIframeAPIReady = () => {
+        setPlayerReady(true);
+      };
+    } else {
+      setPlayerReady(true);
     }
-    return null;
   }, []);
 
-  // Initialize Spotify Web Playback SDK
-  const initializePlayer = useCallback(async () => {
-    if (!accessToken || playerRef.current) return;
-
-    setIsConnecting(true);
-
-    // Load Spotify SDK script if not loaded
-    if (!window.Spotify) {
-      const script = document.createElement('script');
-      script.src = 'https://sdk.scdn.co/spotify-player.js';
-      script.async = true;
-      document.body.appendChild(script);
-
-      await new Promise<void>((resolve) => {
-        window.onSpotifyWebPlaybackSDKReady = () => resolve();
-      });
+  useEffect(() => {
+    if (playerReady && currentSong && !playerRef.current) {
+      initPlayer(currentSong.id);
     }
+  }, [playerReady, currentSong]);
 
-    const player = new window.Spotify.Player({
-      name: 'NexusChecker Music',
-      getOAuthToken: (cb: (token: string) => void) => {
-        cb(accessToken);
-      },
-      volume: volume / 100
-    });
-
-    player.addListener('ready', ({ device_id }: { device_id: string }) => {
-      console.log('[Spotify] Player ready with device ID:', device_id);
-      setDeviceId(device_id);
-      setIsConnected(true);
-      setIsConnecting(false);
-    });
-
-    player.addListener('not_ready', ({ device_id }: { device_id: string }) => {
-      console.log('[Spotify] Device went offline:', device_id);
-      setIsConnected(false);
-    });
-
-    player.addListener('player_state_changed', (state: any) => {
-      if (!state) return;
-      
-      setIsPlaying(!state.paused);
-      setProgress(state.position);
-      setDuration(state.duration);
-      
-      if (state.track_window?.current_track) {
-        const track = state.track_window.current_track;
-        setCurrentTrack({
-          id: track.id,
-          uri: track.uri,
-          title: track.name,
-          artist: track.artists.map((a: any) => a.name).join(', '),
-          album: track.album.name,
-          thumbnail: track.album.images[0]?.url || '',
-          duration: formatDuration(state.duration),
-          durationMs: state.duration,
-          previewUrl: null,
-          externalUrl: `https://open.spotify.com/track/${track.id}`
-        });
+  useEffect(() => {
+    return () => {
+      stopProgressTracking();
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
+        playerRef.current = null;
       }
-    });
+    };
+  }, []);
 
-    player.addListener('initialization_error', ({ message }: { message: string }) => {
-      console.error('[Spotify] Init error:', message);
-      setIsConnecting(false);
-    });
-
-    player.addListener('authentication_error', ({ message }: { message: string }) => {
-      console.error('[Spotify] Auth error:', message);
-      setIsConnecting(false);
-      setAccessToken(null);
-    });
-
-    player.addListener('account_error', ({ message }: { message: string }) => {
-      console.error('[Spotify] Account error:', message);
-      setIsConnecting(false);
-    });
-
-    const connected = await player.connect();
-    if (connected) {
-      playerRef.current = player;
-    } else {
-      setIsConnecting(false);
+  const initPlayer = (videoId: string) => {
+    if (playerRef.current) {
+      playerRef.current.destroy();
     }
-  }, [accessToken, volume]);
-
-  // Connect to Spotify
-  const connectSpotify = async () => {
-    const token = await getAccessToken();
-    if (token) {
-      await initializePlayer();
-    }
-  };
-
-  // Initialize when token is available
-  useEffect(() => {
-    if (accessToken && !playerRef.current) {
-      initializePlayer();
-    }
-  }, [accessToken, initializePlayer]);
-
-  // Progress tracking
-  useEffect(() => {
-    if (isPlaying && isConnected) {
-      progressInterval.current = setInterval(async () => {
-        if (playerRef.current) {
-          const state = await playerRef.current.getCurrentState();
-          if (state) {
-            setProgress(state.position);
+    
+    playerRef.current = new window.YT.Player('youtube-player', {
+      height: '0',
+      width: '0',
+      videoId: videoId,
+      playerVars: {
+        autoplay: 0,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        modestbranding: 1,
+        rel: 0,
+      },
+      events: {
+        onReady: (event: any) => {
+          event.target.setVolume(volume);
+          setDuration(event.target.getDuration());
+        },
+        onStateChange: (event: any) => {
+          if (event.data === window.YT.PlayerState.PLAYING) {
+            setIsPlaying(true);
+            startProgressTracking();
+          } else if (event.data === window.YT.PlayerState.PAUSED) {
+            setIsPlaying(false);
+            stopProgressTracking();
+          } else if (event.data === window.YT.PlayerState.ENDED) {
+            if (isLooping) {
+              event.target.seekTo(0);
+              event.target.playVideo();
+            } else {
+              setIsPlaying(false);
+              setProgress(0);
+              stopProgressTracking();
+            }
           }
         }
-      }, 1000);
-    } else {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
       }
+    });
+  };
+
+  const startProgressTracking = () => {
+    stopProgressTracking();
+    progressInterval.current = setInterval(() => {
+      if (playerRef.current && playerRef.current.getCurrentTime) {
+        setProgress(playerRef.current.getCurrentTime());
+        setDuration(playerRef.current.getDuration());
+      }
+    }, 1000);
+  };
+
+  const stopProgressTracking = () => {
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current);
+      progressInterval.current = null;
     }
-
-    return () => {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
-      }
-    };
-  }, [isPlaying, isConnected]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.disconnect();
-      }
-    };
-  }, []);
-
-  const formatDuration = (ms: number): string => {
-    const mins = Math.floor(ms / 60000);
-    const secs = Math.floor((ms % 60000) / 1000);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleSearch = async () => {
@@ -236,7 +163,7 @@ export function MusicPlayer() {
     
     setIsSearching(true);
     try {
-      const response = await authFetch(`/api/spotify/search?q=${encodeURIComponent(searchQuery)}`);
+      const response = await authFetch(`/api/music/search?q=${encodeURIComponent(searchQuery)}`);
       const data = await response.json();
       if (data.results) {
         setSearchResults(data.results);
@@ -248,61 +175,60 @@ export function MusicPlayer() {
     }
   };
 
-  const handleSelectTrack = async (track: SpotifyTrack) => {
-    if (!isConnected || !deviceId) {
-      // Try to connect first
-      await connectSpotify();
-      return;
-    }
-
-    try {
-      await authFetch('/api/spotify/play', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          uri: track.uri,
-          deviceId: deviceId
-        })
-      });
-      
-      setCurrentTrack(track);
-      localStorage.setItem('currentSpotifyTrack', JSON.stringify(track));
-      setSearchResults([]);
-      setSearchQuery('');
-    } catch (error) {
-      console.error('Failed to play track:', error);
+  const handleSelectSong = (song: Song) => {
+    setCurrentSong(song);
+    localStorage.setItem('currentSong', JSON.stringify(song));
+    setSearchResults([]);
+    setSearchQuery('');
+    
+    if (playerRef.current) {
+      playerRef.current.loadVideoById(song.id);
+      playerRef.current.playVideo();
+    } else if (playerReady) {
+      initPlayer(song.id);
+      setTimeout(() => {
+        if (playerRef.current) {
+          playerRef.current.playVideo();
+        }
+      }, 1000);
     }
   };
 
-  const togglePlay = async () => {
+  const togglePlay = () => {
     if (!playerRef.current) return;
-    await playerRef.current.togglePlay();
+    
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
   };
 
-  const handleSeek = async (value: number[]) => {
+  const handleSeek = (value: number[]) => {
     if (!playerRef.current) return;
-    await playerRef.current.seek(value[0]);
+    playerRef.current.seekTo(value[0], true);
     setProgress(value[0]);
   };
 
-  const handleVolumeChange = async (value: number[]) => {
+  const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
     setVolume(newVolume);
     localStorage.setItem('musicVolume', newVolume.toString());
     if (playerRef.current) {
-      await playerRef.current.setVolume(newVolume / 100);
+      playerRef.current.setVolume(newVolume);
     }
     if (newVolume > 0 && isMuted) {
       setIsMuted(false);
     }
   };
 
-  const toggleMute = async () => {
+  const toggleMute = () => {
     if (!playerRef.current) return;
     if (isMuted) {
-      await playerRef.current.setVolume(volume / 100);
+      playerRef.current.unMute();
+      playerRef.current.setVolume(volume);
     } else {
-      await playerRef.current.setVolume(0);
+      playerRef.current.mute();
     }
     setIsMuted(!isMuted);
   };
@@ -311,66 +237,43 @@ export function MusicPlayer() {
     const newLoop = !isLooping;
     setIsLooping(newLoop);
     localStorage.setItem('musicLoop', newLoop.toString());
-    // Note: Loop functionality would need Spotify API call
   };
 
-  const skipBack = async () => {
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const skipBack = () => {
     if (!playerRef.current) return;
-    await playerRef.current.previousTrack();
+    const newTime = Math.max(0, progress - 10);
+    playerRef.current.seekTo(newTime, true);
+    setProgress(newTime);
   };
 
-  const skipForward = async () => {
+  const skipForward = () => {
     if (!playerRef.current) return;
-    await playerRef.current.nextTrack();
-  };
-
-  const openInSpotify = () => {
-    if (currentTrack?.externalUrl) {
-      window.open(currentTrack.externalUrl, '_blank');
-    }
+    const newTime = Math.min(duration, progress + 10);
+    playerRef.current.seekTo(newTime, true);
+    setProgress(newTime);
   };
 
   return (
-    <Card className="p-4 bg-gradient-to-br from-green-500/10 via-green-600/10 to-black/10 border-green-200 dark:border-green-500/30 overflow-visible" data-testid="music-player">
+    <Card className="p-4 bg-gradient-to-br from-purple-500/10 via-pink-500/10 to-orange-500/10 border-purple-200 dark:border-purple-500/30 overflow-visible" data-testid="music-player">
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg bg-[#1DB954] flex items-center justify-center flex-shrink-0">
-          <SiSpotify className="w-5 h-5 text-white" />
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+          <Music className="w-4 h-4 text-white" />
         </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="font-bold text-sm">Spotify Player</h3>
-          <div className="flex items-center gap-1">
-            {isConnected ? (
-              <>
-                <Wifi className="w-3 h-3 text-green-500" />
-                <p className="text-[10px] text-green-500">Connected</p>
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-3 h-3 text-muted-foreground" />
-                <p className="text-[10px] text-muted-foreground">Not connected</p>
-              </>
-            )}
-          </div>
+        <div className="min-w-0">
+          <h3 className="font-bold text-sm">Music Player</h3>
+          <p className="text-[10px] text-muted-foreground">Search & Play</p>
         </div>
-        {!isConnected && (
-          <Button
-            size="sm"
-            onClick={connectSpotify}
-            disabled={isConnecting}
-            className="bg-[#1DB954] hover:bg-[#1ed760] text-white text-xs h-7"
-          >
-            {isConnecting ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              'Connect'
-            )}
-          </Button>
-        )}
       </div>
 
       <div className="relative mb-3">
         <Input
-          placeholder="Search Spotify..."
+          placeholder="Search song..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -401,76 +304,67 @@ export function MusicPlayer() {
             exit={{ opacity: 0, height: 0 }}
             className="mb-3 max-h-48 overflow-y-auto space-y-1.5 rounded-lg bg-white/30 dark:bg-slate-800/30 p-1.5"
           >
-            {searchResults.map((track) => (
+            {searchResults.map((song) => (
               <motion.div
-                key={track.id}
+                key={song.id}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                onClick={() => handleSelectTrack(track)}
+                onClick={() => handleSelectSong(song)}
                 className="flex items-center gap-2 p-1.5 rounded-md hover:bg-white/50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors active:scale-[0.98]"
-                data-testid={`song-result-${track.id}`}
+                data-testid={`song-result-${song.id}`}
               >
                 <img 
-                  src={track.thumbnail} 
-                  alt={track.title}
+                  src={song.thumbnail} 
+                  alt={song.title}
                   className="w-10 h-10 rounded-md object-cover flex-shrink-0"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-xs truncate">{track.title}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{track.artist}</p>
+                  <p className="font-medium text-xs truncate">{song.title}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{song.channel}</p>
                 </div>
-                <span className="text-[10px] text-muted-foreground">{track.duration}</span>
+                <span className="text-[10px] text-muted-foreground">{song.duration}</span>
               </motion.div>
             ))}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {currentTrack && isConnected && (
+      {currentSong && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="space-y-3"
         >
-          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-gradient-to-r from-green-500/20 to-green-600/20">
+          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-gradient-to-r from-purple-500/20 to-pink-500/20">
             <motion.div 
               animate={{ rotate: isPlaying ? 360 : 0 }}
               transition={{ duration: 3, repeat: isPlaying ? Infinity : 0, ease: "linear" }}
               className="flex-shrink-0"
             >
               <img 
-                src={currentTrack.thumbnail} 
-                alt={currentTrack.title}
+                src={currentSong.thumbnail} 
+                alt={currentSong.title}
                 className="w-12 h-12 rounded-full object-cover border-2 border-white/30 shadow-md"
               />
             </motion.div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-xs truncate">{currentTrack.title}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{currentTrack.artist}</p>
+              <p className="font-bold text-xs truncate">{currentSong.title}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{currentSong.channel}</p>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={openInSpotify}
-              className="h-7 w-7 rounded-full text-[#1DB954]"
-              data-testid="button-open-spotify"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </Button>
           </div>
 
           <div className="space-y-1">
             <Slider
               value={[progress]}
-              max={duration || 1}
-              step={1000}
+              max={duration || 100}
+              step={1}
               onValueChange={handleSeek}
               className="cursor-pointer"
               data-testid="slider-progress"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground px-0.5">
-              <span>{formatDuration(progress)}</span>
-              <span>{formatDuration(duration)}</span>
+              <span>{formatTime(progress)}</span>
+              <span>{formatTime(duration)}</span>
             </div>
           </div>
 
@@ -479,7 +373,7 @@ export function MusicPlayer() {
               size="icon"
               variant="ghost"
               onClick={toggleLoop}
-              className={`h-8 w-8 rounded-full ${isLooping ? 'text-green-500 bg-green-500/20' : ''}`}
+              className={`h-8 w-8 rounded-full ${isLooping ? 'text-purple-500 bg-purple-500/20' : ''}`}
               data-testid="button-loop"
             >
               <Repeat className="w-3.5 h-3.5" />
@@ -496,7 +390,7 @@ export function MusicPlayer() {
             <Button
               size="default"
               onClick={togglePlay}
-              className="h-10 w-10 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-white shadow-md border-0 p-0"
+              className="h-10 w-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md border-0 p-0"
               data-testid="button-play-pause"
             >
               {isPlaying ? (
@@ -544,30 +438,14 @@ export function MusicPlayer() {
         </motion.div>
       )}
 
-      {!isConnected && (
+      {!currentSong && (
         <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
           <Disc3 className="w-10 h-10 mb-2 opacity-30" />
-          <p className="text-xs mb-2">Connect to play full songs</p>
-          <Button
-            size="sm"
-            onClick={connectSpotify}
-            disabled={isConnecting}
-            className="bg-[#1DB954] hover:bg-[#1ed760] text-white"
-          >
-            {isConnecting ? (
-              <>
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              <>
-                <SiSpotify className="w-3 h-3 mr-1" />
-                Connect Spotify
-              </>
-            )}
-          </Button>
+          <p className="text-xs">Search for a song</p>
         </div>
       )}
+
+      <div id="youtube-player" className="hidden" />
     </Card>
   );
 }

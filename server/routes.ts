@@ -1009,6 +1009,193 @@ export async function registerRoutes(
     }
   });
 
+  // Music Search API (using Invidious - free, no API key needed)
+  app.get('/api/music/search', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        return res.status(400).json({ error: 'Search query required' });
+      }
+
+      let results: any[] = [];
+
+      // Try Piped API first (faster and more reliable)
+      const pipedInstances = [
+        'https://pipedapi.kavin.rocks',
+        'https://api.piped.yt',
+        'https://pipedapi.adminforge.de'
+      ];
+
+      for (const instance of pipedInstances) {
+        try {
+          console.log(`[Music] Trying Piped: ${instance}...`);
+          const response = await fetch(
+            `${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`,
+            { 
+              headers: { 'Accept': 'application/json' },
+              signal: AbortSignal.timeout(4000)
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.items && data.items.length > 0) {
+              results = data.items.slice(0, 8).map((item: any) => ({
+                id: item.url?.replace('/watch?v=', '') || item.id,
+                title: item.title,
+                thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${item.url?.replace('/watch?v=', '')}/hqdefault.jpg`,
+                duration: formatDurationSeconds(item.duration || 0),
+                channel: item.uploaderName || item.uploader || 'Unknown'
+              }));
+              console.log(`[Music] Found ${results.length} results from Piped`);
+              break;
+            }
+          }
+        } catch (e) {
+          console.log(`[Music] Piped ${instance} failed, trying next...`);
+          continue;
+        }
+      }
+
+      // Fallback to local library if all instances fail
+      if (results.length === 0) {
+        console.log('[Music] All instances failed, using local library');
+        const popularSongs = [
+          // K-Pop
+          { id: 'gdZLi9oWNZg', title: 'Dynamite - BTS', duration: '3:43', channel: 'BTS' },
+          { id: 'WMweEpGlu_U', title: 'Boy With Luv - BTS ft. Halsey', duration: '4:12', channel: 'BTS' },
+          { id: 'MBdVXkSdhwU', title: 'Butter - BTS', duration: '3:00', channel: 'BTS' },
+          { id: 'pBuZEGYXA6E', title: 'Permission to Dance - BTS', duration: '3:37', channel: 'BTS' },
+          { id: 'XsX3ATc3FbA', title: 'Spring Day - BTS', duration: '4:35', channel: 'BTS' },
+          { id: 'ioNng23DkIM', title: 'How You Like That - BLACKPINK', duration: '3:01', channel: 'BLACKPINK' },
+          { id: 'POe9SOEKotk', title: 'Pink Venom - BLACKPINK', duration: '3:07', channel: 'BLACKPINK' },
+          { id: 'CKZvWhCqx1s', title: 'Kill This Love - BLACKPINK', duration: '3:15', channel: 'BLACKPINK' },
+          { id: '2S24-y0Ij3Y', title: 'DDU-DU DDU-DU - BLACKPINK', duration: '3:36', channel: 'BLACKPINK' },
+          { id: 'IHNzOHi8sJs', title: 'Psycho - Red Velvet', duration: '3:32', channel: 'Red Velvet' },
+          { id: '3ymwOvzhwHs', title: 'Next Level - aespa', duration: '3:42', channel: 'aespa' },
+          { id: 'WPdWvnAAurg', title: 'Super Shy - NewJeans', duration: '2:34', channel: 'NewJeans' },
+          // Pop Hits
+          { id: '7wtfhZwyrcc', title: 'Believer - Imagine Dragons', duration: '3:24', channel: 'Imagine Dragons' },
+          { id: 'ktvTqknDobU', title: 'Radioactive - Imagine Dragons', duration: '4:21', channel: 'Imagine Dragons' },
+          { id: 'sENM2wA_FTg', title: 'Thunder - Imagine Dragons', duration: '3:24', channel: 'Imagine Dragons' },
+          { id: 'mWRsgZuwf_8', title: 'Whatever It Takes - Imagine Dragons', duration: '3:21', channel: 'Imagine Dragons' },
+          { id: 'gOsM-DYAEhY', title: 'Natural - Imagine Dragons', duration: '3:09', channel: 'Imagine Dragons' },
+          { id: 'JGwWNGJdvx8', title: 'Shape of You - Ed Sheeran', duration: '4:24', channel: 'Ed Sheeran' },
+          { id: '2Vv-BfVoq4g', title: 'Perfect - Ed Sheeran', duration: '4:23', channel: 'Ed Sheeran' },
+          { id: 'lp-EO5I60KA', title: 'Thinking Out Loud - Ed Sheeran', duration: '4:57', channel: 'Ed Sheeran' },
+          { id: 'orJSJGHjBLI', title: 'Photograph - Ed Sheeran', duration: '4:19', channel: 'Ed Sheeran' },
+          { id: '60ItHLz5WEA', title: 'Faded - Alan Walker', duration: '3:33', channel: 'Alan Walker' },
+          { id: 'IcrbM1l_BoI', title: 'Alone - Alan Walker', duration: '2:57', channel: 'Alan Walker' },
+          { id: 'J9NQFACZYEU', title: 'Darkside - Alan Walker', duration: '3:32', channel: 'Alan Walker' },
+          { id: 'viNRKSMpJ-0', title: 'The Spectre - Alan Walker', duration: '3:15', channel: 'Alan Walker' },
+          // Arabic
+          { id: 'rVzRkNL3XNo', title: 'Ah W Noss - Nancy Ajram', duration: '4:02', channel: 'Nancy Ajram' },
+          { id: 'gFuqYQmCQm4', title: 'Enta Eih - Nancy Ajram', duration: '5:15', channel: 'Nancy Ajram' },
+          { id: 'yvnGpUt-WbU', title: 'Tamally Maak - Amr Diab', duration: '4:25', channel: 'Amr Diab' },
+          { id: '5HVsHs8vCkI', title: 'Nour El Ain - Amr Diab', duration: '5:01', channel: 'Amr Diab' },
+          { id: 'JRfuAukYTKg', title: 'Habibi Ya Nour El Ain - Amr Diab', duration: '5:04', channel: 'Amr Diab' },
+          { id: 'kYQxFE4Gx4A', title: 'Boshret Kheir - Hussain Al Jassmi', duration: '3:44', channel: 'Hussain Al Jassmi' },
+          { id: 'LjOmcG7hRBk', title: 'Aa Bali Habibi - Elissa', duration: '4:45', channel: 'Elissa' },
+          { id: 'g3rA-qi4BWQ', title: 'Saharna Ya Lail - Elissa', duration: '4:20', channel: 'Elissa' },
+          { id: 'gupCkL_mHwY', title: '3 Daqat - Abu ft. Yousra', duration: '3:47', channel: 'Abu' },
+          { id: 'nrAq1rlAH6E', title: 'Ergaaly - Sherine', duration: '5:08', channel: 'Sherine' },
+          { id: 'DP4VgEzJJY4', title: 'Smile - Tamer Hosny', duration: '4:10', channel: 'Tamer Hosny' },
+          // Latin
+          { id: 'ru0K8uYEZWw', title: 'Despacito - Luis Fonsi ft. Daddy Yankee', duration: '4:41', channel: 'Luis Fonsi' },
+          { id: 'kJQP7kiw5Fk', title: 'Despacito (Official) - Luis Fonsi', duration: '4:41', channel: 'Luis Fonsi' },
+          { id: 'moSFlvxnbgk', title: 'Shakira - Hips Dont Lie', duration: '3:38', channel: 'Shakira' },
+          { id: 'pRpeEdMmmQ0', title: 'Shakira - Waka Waka', duration: '3:31', channel: 'Shakira' },
+          { id: 'DUT5rEU6pqM', title: 'Shakira - La Tortura', duration: '3:35', channel: 'Shakira' },
+          { id: 'GxBSyx85Kp8', title: 'Bad Bunny - Dakiti', duration: '3:26', channel: 'Bad Bunny' },
+          { id: 'TmKh7lAwnBI', title: 'Bad Bunny x Jhay Cortez - Dakiti', duration: '3:26', channel: 'Bad Bunny' },
+          // Pop Icons
+          { id: 'RgKAFK5djSk', title: 'See You Again - Wiz Khalifa ft. Charlie Puth', duration: '4:05', channel: 'Wiz Khalifa' },
+          { id: 'YQHsXMglC9A', title: 'Hello - Adele', duration: '6:07', channel: 'Adele' },
+          { id: 'hLQl3WQQoQ0', title: 'Someone Like You - Adele', duration: '4:45', channel: 'Adele' },
+          { id: 'rYEDA3JcQqw', title: 'Rolling in the Deep - Adele', duration: '3:48', channel: 'Adele' },
+          { id: '4NRXx6U8ABQ', title: 'Blinding Lights - The Weeknd', duration: '4:22', channel: 'The Weeknd' },
+          { id: 'XXYlFuWEuKI', title: 'Starboy - The Weeknd', duration: '4:16', channel: 'The Weeknd' },
+          { id: 'fHI8X4OXluQ', title: 'The Hills - The Weeknd', duration: '4:02', channel: 'The Weeknd' },
+          { id: 'DyDfgMOUjCI', title: 'Bad Guy - Billie Eilish', duration: '3:14', channel: 'Billie Eilish' },
+          { id: 'Dm9Zfao3vSU', title: 'Lovely - Billie Eilish & Khalid', duration: '3:20', channel: 'Billie Eilish' },
+          { id: 'pbMwTqkKSps', title: 'Ocean Eyes - Billie Eilish', duration: '3:24', channel: 'Billie Eilish' },
+          // Rock/Alternative
+          { id: 'kXYiU_JCYtU', title: 'Numb - Linkin Park', duration: '3:07', channel: 'Linkin Park' },
+          { id: 'eVTXPUF4Oz4', title: 'In The End - Linkin Park', duration: '3:36', channel: 'Linkin Park' },
+          { id: 'Gd9OhYroLN0', title: 'What Ive Done - Linkin Park', duration: '3:25', channel: 'Linkin Park' },
+          { id: '1w7OgIMMRc4', title: 'Cant Feel My Face - The Weeknd', duration: '3:35', channel: 'The Weeknd' },
+          { id: 'hT_nvWreIhg', title: 'Counting Stars - OneRepublic', duration: '4:44', channel: 'OneRepublic' },
+          { id: 'QcIy9NiNbmo', title: 'Take Me To Church - Hozier', duration: '4:38', channel: 'Hozier' },
+          // Electronic/Dance
+          { id: 'PT2_F-1esPk', title: 'Something Just Like This - Coldplay & The Chainsmokers', duration: '4:07', channel: 'Coldplay' },
+          { id: '1-xGerv5FOk', title: 'Closer - The Chainsmokers ft. Halsey', duration: '4:22', channel: 'The Chainsmokers' },
+          { id: 'mRD0-GxqHVo', title: 'Dont Let Me Down - The Chainsmokers', duration: '3:28', channel: 'The Chainsmokers' },
+          { id: 'FM7MFYoylVs', title: 'Paris - The Chainsmokers', duration: '3:41', channel: 'The Chainsmokers' },
+          { id: 'bo_efYhYU2A', title: 'The Nights - Avicii', duration: '2:56', channel: 'Avicii' },
+          { id: 'IcrbM1l_BoI', title: 'Wake Me Up - Avicii', duration: '4:07', channel: 'Avicii' },
+          { id: 'sAebYQgy4n4', title: 'Waiting For Love - Avicii', duration: '3:50', channel: 'Avicii' },
+          { id: 'cMg8KaMdDYo', title: 'Hey Brother - Avicii', duration: '4:18', channel: 'Avicii' },
+          // Pop Queens
+          { id: 'CevxZvSJLk8', title: 'Roar - Katy Perry', duration: '4:30', channel: 'Katy Perry' },
+          { id: 'QYh6mYIJG2Y', title: 'Firework - Katy Perry', duration: '3:52', channel: 'Katy Perry' },
+          { id: 'nfWlot6h_JM', title: 'Shake It Off - Taylor Swift', duration: '4:01', channel: 'Taylor Swift' },
+          { id: 'e-ORhEE9VVg', title: 'Blank Space - Taylor Swift', duration: '4:33', channel: 'Taylor Swift' },
+          { id: 'ApXoWvfEYVU', title: 'Anti-Hero - Taylor Swift', duration: '3:21', channel: 'Taylor Swift' },
+          { id: 'WA4iX5D9Z64', title: 'Love Story - Taylor Swift', duration: '3:56', channel: 'Taylor Swift' },
+          { id: 'oygrmJFKYZY', title: 'Levitating - Dua Lipa', duration: '3:23', channel: 'Dua Lipa' },
+          { id: 'F4neLJQC1_E', title: 'Dont Start Now - Dua Lipa', duration: '3:03', channel: 'Dua Lipa' },
+          { id: 'k2qgadSvNyU', title: 'New Rules - Dua Lipa', duration: '3:35', channel: 'Dua Lipa' },
+          // Hip Hop/Rap
+          { id: 'uxpDa-c-4Mc', title: 'One Dance - Drake ft. Wizkid', duration: '2:54', channel: 'Drake' },
+          { id: 'xpVfcZ0ZcFM', title: 'Gods Plan - Drake', duration: '5:57', channel: 'Drake' },
+          { id: 'JFm7YDVlqnI', title: 'Hotline Bling - Drake', duration: '4:27', channel: 'Drake' },
+          { id: 'RsEZmictANA', title: 'Happy - Pharrell Williams', duration: '4:00', channel: 'Pharrell Williams' },
+          { id: 'ZbZSe6N_BXs', title: 'Happy (Official) - Pharrell Williams', duration: '4:00', channel: 'Pharrell Williams' },
+          { id: 'uelHwf8o7_U', title: 'Love Yourself - Justin Bieber', duration: '3:53', channel: 'Justin Bieber' },
+          { id: 'fRh_vgS2dFE', title: 'Sorry - Justin Bieber', duration: '3:26', channel: 'Justin Bieber' },
+          { id: 'kffacxfA7G4', title: 'Baby - Justin Bieber ft. Ludacris', duration: '3:33', channel: 'Justin Bieber' },
+          // Post Malone
+          { id: 'SC4xMk98Pdc', title: 'Sunflower - Post Malone', duration: '2:38', channel: 'Post Malone' },
+          { id: 'UceaB4D0jpo', title: 'Circles - Post Malone', duration: '3:35', channel: 'Post Malone' },
+          { id: 'ApXoWvfEYVU', title: 'Rockstar - Post Malone', duration: '3:38', channel: 'Post Malone' },
+          // Maroon 5
+          { id: '09R8_2nJtjg', title: 'Sugar - Maroon 5', duration: '5:01', channel: 'Maroon 5' },
+          { id: 'aJOTlE1K90k', title: 'Memories - Maroon 5', duration: '3:09', channel: 'Maroon 5' },
+          { id: 'iS1g8G_njx8', title: 'Girls Like You - Maroon 5 ft. Cardi B', duration: '3:55', channel: 'Maroon 5' },
+          // Charlie Puth
+          { id: 'e9ieAz_2oEs', title: 'Attention - Charlie Puth', duration: '3:31', channel: 'Charlie Puth' },
+          { id: 'CnAmeh0-E-U', title: 'We Dont Talk Anymore - Charlie Puth ft. Selena Gomez', duration: '3:37', channel: 'Charlie Puth' },
+          // Classics
+          { id: 'oofSnsGkops', title: 'Havana - Camila Cabello', duration: '3:37', channel: 'Camila Cabello' },
+          { id: 'kOkQ4T5WO9E', title: 'Senorita - Shawn Mendes & Camila Cabello', duration: '3:11', channel: 'Shawn Mendes' },
+          { id: 'xo1VInw-SKc', title: 'Stitches - Shawn Mendes', duration: '3:27', channel: 'Shawn Mendes' }
+        ];
+
+        const searchLower = query.toLowerCase();
+        results = popularSongs
+          .filter(s => s.title.toLowerCase().includes(searchLower) || s.channel.toLowerCase().includes(searchLower))
+          .slice(0, 8)
+          .map(s => ({ ...s, thumbnail: `https://i.ytimg.com/vi/${s.id}/hqdefault.jpg` }));
+
+        if (results.length === 0) {
+          results = popularSongs.slice(0, 8).map(s => ({ ...s, thumbnail: `https://i.ytimg.com/vi/${s.id}/hqdefault.jpg` }));
+        }
+      }
+
+      res.json({ results });
+    } catch (e: any) {
+      console.error('[Music] Search error:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  function formatDurationSeconds(seconds: number): string {
+    if (!seconds || seconds === 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
   // Spotify Token API (for Web Playback SDK)
   app.get('/api/spotify/token', authMiddleware, async (req: AuthRequest, res) => {
     try {
