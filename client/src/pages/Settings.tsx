@@ -122,7 +122,7 @@ export default function Settings() {
     },
   });
 
-  const { data: notifSettings } = useQuery<{
+  const { data: notifSettings, isLoading: notifLoading } = useQuery<{
     approvedAlerts: boolean;
     dailySummary: boolean;
     streakReminder: boolean;
@@ -130,6 +130,9 @@ export default function Settings() {
     queryKey: ['/api/notifications/settings'],
     queryFn: async () => {
       const res = await authFetch('/api/notifications/settings');
+      if (!res.ok) {
+        throw new Error('Failed to load notification settings');
+      }
       return res.json();
     },
   });
@@ -140,11 +143,37 @@ export default function Settings() {
         method: 'POST',
         body: JSON.stringify(settings),
       });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update settings');
+      }
       return res.json();
+    },
+    onMutate: async (newSettings) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['/api/notifications/settings'] });
+      
+      // Snapshot the previous value
+      const previousSettings = queryClient.getQueryData(['/api/notifications/settings']);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['/api/notifications/settings'], (old: any) => ({
+        ...old,
+        ...newSettings,
+      }));
+      
+      return { previousSettings };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/settings'] });
       toast({ title: 'Settings saved', soundType: 'success' });
+    },
+    onError: (error: Error, _newSettings, context) => {
+      // Rollback to the previous value
+      if (context?.previousSettings) {
+        queryClient.setQueryData(['/api/notifications/settings'], context.previousSettings);
+      }
+      toast({ title: 'Error saving settings', description: error.message, variant: 'destructive', soundType: 'error' });
     },
   });
 
@@ -773,6 +802,7 @@ export default function Settings() {
                   id="approved-alerts"
                   checked={notifSettings?.approvedAlerts ?? true}
                   onCheckedChange={(checked) => updateNotificationsMutation.mutate({ approvedAlerts: checked })}
+                  disabled={notifLoading || updateNotificationsMutation.isPending}
                   data-testid="switch-approved-alerts"
                 />
               </div>
@@ -788,6 +818,7 @@ export default function Settings() {
                   id="daily-summary"
                   checked={notifSettings?.dailySummary ?? false}
                   onCheckedChange={(checked) => updateNotificationsMutation.mutate({ dailySummary: checked })}
+                  disabled={notifLoading || updateNotificationsMutation.isPending}
                   data-testid="switch-daily-summary"
                 />
               </div>
@@ -803,6 +834,7 @@ export default function Settings() {
                   id="streak-reminder"
                   checked={notifSettings?.streakReminder ?? true}
                   onCheckedChange={(checked) => updateNotificationsMutation.mutate({ streakReminder: checked })}
+                  disabled={notifLoading || updateNotificationsMutation.isPending}
                   data-testid="switch-streak-reminder"
                 />
               </div>
