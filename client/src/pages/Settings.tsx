@@ -46,6 +46,7 @@ import {
   Cloud,
 } from 'lucide-react';
 import { Link } from 'wouter';
+import { MusicPlayer } from '@/components/MusicPlayer';
 
 const themeOptions: { value: Theme; label: string; icon: typeof Sun; color: string }[] = [
   { value: 'light', label: 'Light', icon: Sun, color: 'text-amber-500' },
@@ -743,6 +744,14 @@ export default function Settings() {
               </div>
             </div>
           </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <MusicPlayer />
         </motion.div>
 
       </main>
