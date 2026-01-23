@@ -1008,7 +1008,7 @@ export async function registerRoutes(
     }
   });
 
-  // YouTube Search API (using Piped API for free access)
+  // YouTube Search API (using Official YouTube Data API v3 with fallback)
   app.get('/api/youtube/search', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const query = req.query.q as string;
@@ -1016,14 +1016,54 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Search query required' });
       }
 
-      // Extended library of popular songs for instant search
+      const apiKey = process.env.GOOGLE_API_KEY;
+      
+      // Try YouTube Data API v3 first
+      if (apiKey) {
+        try {
+          const response = await fetch(
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=8&q=${encodeURIComponent(query + ' music')}&key=${apiKey}`,
+            { 
+              headers: { 'Accept': 'application/json' },
+              signal: AbortSignal.timeout(5000)
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.items && data.items.length > 0) {
+              const results = data.items.map((item: any) => ({
+                id: item.id.videoId,
+                title: item.snippet.title,
+                thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+                duration: '',
+                channel: item.snippet.channelTitle
+              }));
+              return res.json({ results });
+            }
+          }
+        } catch (e) {
+          console.log('YouTube API failed, using fallback library');
+        }
+      }
+
+      // Fallback: Extended library of popular songs
       const popularSongs = [
+        // BTS
+        { id: 'gdZLi9oWNZg', title: 'Dynamite - BTS', duration: '3:43', channel: 'BTS' },
+        { id: 'WMweEpGlu_U', title: 'Boy With Luv - BTS ft. Halsey', duration: '4:12', channel: 'BTS' },
+        { id: 'MBdVXkSdhwU', title: 'Butter - BTS', duration: '3:00', channel: 'BTS' },
+        { id: 'pBuZEGYXA6E', title: 'Permission to Dance - BTS', duration: '3:37', channel: 'BTS' },
+        // BLACKPINK
+        { id: 'ioNng23DkIM', title: 'How You Like That - BLACKPINK', duration: '3:01', channel: 'BLACKPINK' },
+        { id: 'POe9SOEKotk', title: 'Pink Venom - BLACKPINK', duration: '3:07', channel: 'BLACKPINK' },
+        { id: 'CKZvWhCqx1s', title: 'Kill This Love - BLACKPINK', duration: '3:15', channel: 'BLACKPINK' },
+        { id: '2S24-y0Ij3Y', title: 'DDU-DU DDU-DU - BLACKPINK', duration: '3:36', channel: 'BLACKPINK' },
         // Imagine Dragons
         { id: '7wtfhZwyrcc', title: 'Believer - Imagine Dragons', duration: '3:24', channel: 'Imagine Dragons' },
         { id: 'ktvTqknDobU', title: 'Radioactive - Imagine Dragons', duration: '4:21', channel: 'Imagine Dragons' },
         { id: 'sENM2wA_FTg', title: 'Thunder - Imagine Dragons', duration: '3:24', channel: 'Imagine Dragons' },
         { id: 'mWRsgZuwf_8', title: 'Whatever It Takes - Imagine Dragons', duration: '3:21', channel: 'Imagine Dragons' },
-        { id: 'gOsM-DYAEhY', title: 'Natural - Imagine Dragons', duration: '3:09', channel: 'Imagine Dragons' },
         // Ed Sheeran
         { id: 'JGwWNGJdvx8', title: 'Shape of You - Ed Sheeran', duration: '4:24', channel: 'Ed Sheeran' },
         { id: '2Vv-BfVoq4g', title: 'Perfect - Ed Sheeran', duration: '4:23', channel: 'Ed Sheeran' },
@@ -1032,39 +1072,53 @@ export async function registerRoutes(
         { id: '60ItHLz5WEA', title: 'Faded - Alan Walker', duration: '3:33', channel: 'Alan Walker' },
         { id: 'IcrbM1l_BoI', title: 'Alone - Alan Walker', duration: '2:57', channel: 'Alan Walker' },
         { id: 'J9NQFACZYEU', title: 'Darkside - Alan Walker', duration: '3:32', channel: 'Alan Walker' },
-        { id: 'viNRKSMpJ-0', title: 'The Spectre - Alan Walker', duration: '3:15', channel: 'Alan Walker' },
-        // Popular Hits
+        // Arabic songs
+        { id: 'rVzRkNL3XNo', title: 'Ah W Noss - Nancy Ajram', duration: '4:02', channel: 'Nancy Ajram' },
+        { id: 'yvnGpUt-WbU', title: 'Tamally Maak - Amr Diab', duration: '4:25', channel: 'Amr Diab' },
+        { id: '5HVsHs8vCkI', title: 'Nour El Ain - Amr Diab', duration: '5:01', channel: 'Amr Diab' },
+        { id: 'LjOmcG7hRBk', title: 'Aa Bali Habibi - Elissa', duration: '4:45', channel: 'Elissa' },
+        { id: 'kYQxFE4Gx4A', title: 'Boshret Kheir - Hussain Al Jassmi', duration: '3:44', channel: 'Hussain Al Jassmi' },
+        // More hits
+        { id: 'ru0K8uYEZWw', title: 'Despacito - Luis Fonsi ft. Daddy Yankee', duration: '4:41', channel: 'Luis Fonsi' },
         { id: 'RgKAFK5djSk', title: 'See You Again - Wiz Khalifa ft. Charlie Puth', duration: '4:05', channel: 'Wiz Khalifa' },
         { id: 'hT_nvWreIhg', title: 'Counting Stars - OneRepublic', duration: '4:44', channel: 'OneRepublic' },
         { id: 'YQHsXMglC9A', title: 'Hello - Adele', duration: '6:07', channel: 'Adele' },
-        { id: 'bo_efYhYU2A', title: 'The Nights - Avicii', duration: '2:56', channel: 'Avicii' },
-        { id: 'IcrbM1l_BoI', title: 'Wake Me Up - Avicii', duration: '4:07', channel: 'Avicii' },
+        { id: 'PT2_F-1esPk', title: 'Something Just Like This - Coldplay', duration: '4:07', channel: 'Coldplay' },
+        { id: '1-xGerv5FOk', title: 'Closer - The Chainsmokers ft. Halsey', duration: '4:22', channel: 'The Chainsmokers' },
+        { id: 'kXYiU_JCYtU', title: 'Numb - Linkin Park', duration: '3:07', channel: 'Linkin Park' },
+        { id: 'eVTXPUF4Oz4', title: 'In The End - Linkin Park', duration: '3:36', channel: 'Linkin Park' },
+        { id: 'oofSnsGkops', title: 'Havana - Camila Cabello', duration: '3:37', channel: 'Camila Cabello' },
         { id: 'uelHwf8o7_U', title: 'Love Yourself - Justin Bieber', duration: '3:53', channel: 'Justin Bieber' },
         { id: 'fRh_vgS2dFE', title: 'Sorry - Justin Bieber', duration: '3:26', channel: 'Justin Bieber' },
         { id: 'nfWlot6h_JM', title: 'Shake It Off - Taylor Swift', duration: '4:01', channel: 'Taylor Swift' },
         { id: 'e-ORhEE9VVg', title: 'Blank Space - Taylor Swift', duration: '4:33', channel: 'Taylor Swift' },
-        { id: 'QcIy9NiNbmo', title: 'Take Me To Church - Hozier', duration: '4:38', channel: 'Hozier' },
+        { id: 'ApXoWvfEYVU', title: 'Anti-Hero - Taylor Swift', duration: '3:21', channel: 'Taylor Swift' },
+        { id: 'bo_efYhYU2A', title: 'The Nights - Avicii', duration: '2:56', channel: 'Avicii' },
+        { id: 'IcrbM1l_BoI', title: 'Wake Me Up - Avicii', duration: '4:07', channel: 'Avicii' },
         { id: 'CevxZvSJLk8', title: 'Roar - Katy Perry', duration: '4:30', channel: 'Katy Perry' },
-        { id: 'QYh6mYIJG2Y', title: 'Firework - Katy Perry', duration: '3:52', channel: 'Katy Perry' },
-        // Arabic songs
-        { id: 'rVzRkNL3XNo', title: 'Nancy Ajram - Ah W Noss', duration: '4:02', channel: 'Nancy Ajram' },
-        { id: 'yvnGpUt-WbU', title: 'Amr Diab - Tamally Maak', duration: '4:25', channel: 'Amr Diab' },
-        { id: '5HVsHs8vCkI', title: 'Amr Diab - Nour El Ain', duration: '5:01', channel: 'Amr Diab' },
-        { id: 'LjOmcG7hRBk', title: 'Elissa - Aa Bali Habibi', duration: '4:45', channel: 'Elissa' },
-        { id: 'DP4VgEzJJY4', title: 'Tamer Hosny - Smile', duration: '4:10', channel: 'Tamer Hosny' },
-        { id: 'kYQxFE4Gx4A', title: 'Hussain Al Jassmi - Boshret Kheir', duration: '3:44', channel: 'Hussain Al Jassmi' },
-        // More hits
-        { id: 'PT2_F-1esPk', title: "Something Just Like This - Coldplay & The Chainsmokers", duration: '4:07', channel: 'Coldplay' },
-        { id: '1-xGerv5FOk', title: 'Closer - The Chainsmokers ft. Halsey', duration: '4:22', channel: 'The Chainsmokers' },
-        { id: 'mRD0-GxqHVo', title: "Don't Let Me Down - The Chainsmokers", duration: '3:28', channel: 'The Chainsmokers' },
         { id: 'e9ieAz_2oEs', title: 'Attention - Charlie Puth', duration: '3:31', channel: 'Charlie Puth' },
-        { id: 'kXYiU_JCYtU', title: 'Numb - Linkin Park', duration: '3:07', channel: 'Linkin Park' },
-        { id: 'eVTXPUF4Oz4', title: 'In The End - Linkin Park', duration: '3:36', channel: 'Linkin Park' },
-        { id: 'oofSnsGkops', title: 'Havana - Camila Cabello', duration: '3:37', channel: 'Camila Cabello' },
-        { id: 'ru0K8uYEZWw', title: 'Despacito - Luis Fonsi ft. Daddy Yankee', duration: '4:41', channel: 'Luis Fonsi' }
+        // Drake
+        { id: 'uxpDa-c-4Mc', title: 'One Dance - Drake ft. Wizkid', duration: '2:54', channel: 'Drake' },
+        { id: 'xpVfcZ0ZcFM', title: "God's Plan - Drake", duration: '5:57', channel: 'Drake' },
+        // The Weeknd
+        { id: 'XXYlFuWEuKI', title: 'Starboy - The Weeknd', duration: '4:16', channel: 'The Weeknd' },
+        { id: '4NRXx6U8ABQ', title: 'Blinding Lights - The Weeknd', duration: '4:22', channel: 'The Weeknd' },
+        // Dua Lipa
+        { id: 'oygrmJFKYZY', title: 'Levitating - Dua Lipa', duration: '3:23', channel: 'Dua Lipa' },
+        { id: 'F4neLJQC1_E', title: "Don't Start Now - Dua Lipa", duration: '3:03', channel: 'Dua Lipa' },
+        // Bad Bunny
+        { id: 'TmKh7lAwnBI', title: 'Dakiti - Bad Bunny x Jhay Cortez', duration: '3:26', channel: 'Bad Bunny' },
+        // Billie Eilish
+        { id: 'DyDfgMOUjCI', title: 'Bad Guy - Billie Eilish', duration: '3:14', channel: 'Billie Eilish' },
+        { id: 'Dm9Zfao3vSU', title: 'Lovely - Billie Eilish & Khalid', duration: '3:20', channel: 'Billie Eilish' },
+        // Post Malone
+        { id: 'ApXoWvfEYVU', title: 'Circles - Post Malone', duration: '3:35', channel: 'Post Malone' },
+        { id: 'SC4xMk98Pdc', title: 'Sunflower - Post Malone', duration: '2:38', channel: 'Post Malone' },
+        // Maroon 5
+        { id: '09R8_2nJtjg', title: 'Sugar - Maroon 5', duration: '5:01', channel: 'Maroon 5' },
+        { id: 'aJOTlE1K90k', title: 'Memories - Maroon 5', duration: '3:09', channel: 'Maroon 5' }
       ];
 
-      // Search in local library first (instant results)
       const searchLower = query.toLowerCase();
       let results = popularSongs
         .filter(s => 
@@ -1077,40 +1131,7 @@ export async function registerRoutes(
           thumbnail: `https://i.ytimg.com/vi/${s.id}/hqdefault.jpg`
         }));
 
-      // If no local matches, try external APIs with short timeout
-      if (results.length === 0) {
-        const pipedInstances = ['https://pipedapi.kavin.rocks', 'https://api.piped.yt'];
-        
-        for (const instance of pipedInstances) {
-          try {
-            const response = await fetch(
-              `${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`,
-              { 
-                headers: { 'Accept': 'application/json' },
-                signal: AbortSignal.timeout(3000)
-              }
-            );
-            
-            if (response.ok) {
-              const data = await response.json();
-              if (data.items && data.items.length > 0) {
-                results = data.items.slice(0, 8).map((item: any) => ({
-                  id: item.url?.replace('/watch?v=', '') || item.id,
-                  title: item.title,
-                  thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${item.url?.replace('/watch?v=', '')}/hqdefault.jpg`,
-                  duration: formatDuration(item.duration || 0),
-                  channel: item.uploaderName || item.uploader || 'Unknown'
-                }));
-                break;
-              }
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-      }
-
-      // Ultimate fallback: return popular songs
+      // If no matches, return popular songs
       if (results.length === 0) {
         results = popularSongs.slice(0, 8).map(s => ({
           ...s,
@@ -1124,13 +1145,6 @@ export async function registerRoutes(
       res.status(500).json({ error: e.message });
     }
   });
-
-  function formatDuration(seconds: number): string {
-    if (!seconds || seconds === 0) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
 
   // Initialize Telegram bot (webhook in production, polling in development)
   initBot();
