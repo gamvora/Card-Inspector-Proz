@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
+import { authFetch } from '@/lib/auth';
 import { 
   Search, 
   Play, 
@@ -15,8 +16,6 @@ import {
   Repeat, 
   Loader2,
   Music,
-  X,
-  Heart,
   Disc3
 } from 'lucide-react';
 
@@ -90,6 +89,18 @@ export function MusicPlayer({ onMinimize }: MusicPlayerProps) {
     }
   }, [playerReady, currentSong]);
 
+  useEffect(() => {
+    return () => {
+      stopProgressTracking();
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
+        playerRef.current = null;
+      }
+    };
+  }, []);
+
   const initPlayer = (videoId: string) => {
     if (playerRef.current) {
       playerRef.current.destroy();
@@ -156,7 +167,7 @@ export function MusicPlayer({ onMinimize }: MusicPlayerProps) {
     
     setIsSearching(true);
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}`);
+      const response = await authFetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}`);
       const data = await response.json();
       if (data.results) {
         setSearchResults(data.results);
@@ -387,13 +398,13 @@ export function MusicPlayer({ onMinimize }: MusicPlayerProps) {
             <Button
               size="lg"
               onClick={togglePlay}
-              className="rounded-full w-14 h-14 bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30 border-0"
+              className="rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30 border-0"
               data-testid="button-play-pause"
             >
               {isPlaying ? (
-                <Pause className="w-6 h-6" />
+                <Pause className="w-5 h-5" />
               ) : (
-                <Play className="w-6 h-6 ml-1" />
+                <Play className="w-5 h-5 ml-0.5" />
               )}
             </Button>
             <Button
