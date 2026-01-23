@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/lib/ThemeProvider";
 import { CheckerProvider } from "@/lib/checker-context";
 import { TutorialProvider } from "@/lib/tutorial-context";
 import { useState, useEffect } from "react";
+import { BackgroundMusic } from "@/components/BackgroundMusic";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -48,6 +49,7 @@ function App() {
             <TutorialProvider>
               <TooltipProvider>
                 <div className="min-h-screen bg-background text-foreground">
+                  <BackgroundMusic />
                   <AppContent />
                   <Toaster />
                 </div>

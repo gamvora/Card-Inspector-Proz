@@ -34,7 +34,6 @@ import { useAuth, authFetch } from "@/lib/auth";
 import { useTutorial } from "@/lib/tutorial-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { HelpCircle } from "lucide-react";
-import { BackgroundMusic } from "@/components/BackgroundMusic";
 
 interface Site {
   id: number;
@@ -360,7 +359,6 @@ export default function Home() {
               </motion.div>
             </div>
             
-            <BackgroundMusic />
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
