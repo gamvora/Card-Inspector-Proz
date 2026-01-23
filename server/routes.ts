@@ -11,6 +11,7 @@ import { telegramService } from "./services/telegram";
 import { handleBotUpdate, initBot, sendChargedCardNotification } from "./services/telegramBot";
 import { setWss } from "./services/wsManager";
 import { searchTracks as spotifySearch, getAccessTokenForClient, playTrack as spotifyPlayTrack } from "./services/spotify";
+import { generateCaptcha, verifyCaptcha } from "./captcha";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'nexus-checker-secret-key-2025';
 
@@ -1629,6 +1630,30 @@ export async function registerRoutes(
       res.send(lines.join('\n'));
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === CAPTCHA ===
+  app.get('/api/captcha', (req, res) => {
+    try {
+      const captcha = generateCaptcha();
+      res.json(captcha);
+    } catch (e: any) {
+      res.status(500).json({ error: 'Failed to generate captcha' });
+    }
+  });
+
+  app.post('/api/captcha/verify', (req, res) => {
+    try {
+      const { id, answer } = req.body;
+      if (!id || !answer) {
+        return res.status(400).json({ error: 'Missing captcha id or answer' });
+      }
+      
+      const isValid = verifyCaptcha(id, answer);
+      res.json({ valid: isValid });
+    } catch (e: any) {
+      res.status(500).json({ error: 'Failed to verify captcha' });
     }
   });
 

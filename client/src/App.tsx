@@ -9,6 +9,7 @@ import { CheckerProvider } from "@/lib/checker-context";
 import { TutorialProvider } from "@/lib/tutorial-context";
 import { useState, useEffect } from "react";
 import { initBackgroundMusic } from "@/components/BackgroundMusic";
+import { Captcha, isCaptchaVerified } from "@/components/Captcha";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -20,6 +21,7 @@ function AppContent() {
   const { isLoading, isAuthenticated, user } = useAuth();
   const [showLoading, setShowLoading] = useState(true);
   const [loadingComplete, setLoadingComplete] = useState(false);
+  const [captchaVerified, setCaptchaVerified] = useState(() => isCaptchaVerified());
 
   useEffect(() => {
     initBackgroundMusic();
@@ -30,6 +32,10 @@ function AppContent() {
       setShowLoading(false);
     }
   }, [isLoading, loadingComplete]);
+
+  if (!captchaVerified) {
+    return <Captcha onVerified={() => setCaptchaVerified(true)} />;
+  }
 
   if (showLoading) {
     return <Loading onComplete={() => setLoadingComplete(true)} />;
