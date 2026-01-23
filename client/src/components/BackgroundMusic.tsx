@@ -3,9 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Volume2, VolumeX } from 'lucide-react';
 
 const MUSIC_TRACKS = [
-  'https://cdn.pixabay.com/audio/2022/10/25/audio_2cac175e89.mp3',
-  'https://cdn.pixabay.com/audio/2022/03/15/audio_d49d06c1af.mp3',
-  'https://cdn.pixabay.com/audio/2024/11/29/audio_7a02c16b66.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
 ];
 
 declare global {
@@ -84,21 +84,21 @@ export function BackgroundMusic() {
   };
 
   return (
-    <div className="fixed top-3 right-3 z-[9999]">
+    <div className="fixed top-4 right-4 z-[99999]">
       <Button
-        variant="ghost"
+        variant="outline"
         size="icon"
         onClick={toggleMute}
-        className="relative bg-background/80 backdrop-blur-sm border border-border/50 shadow-lg"
+        className="relative h-10 w-10 rounded-full bg-background shadow-xl border-2 border-primary/30"
         data-testid="button-toggle-music"
       >
         {isMuted ? (
-          <VolumeX className="h-4 w-4 text-muted-foreground" />
+          <VolumeX className="h-5 w-5 text-muted-foreground" />
         ) : (
           <>
-            <Volume2 className="h-4 w-4 text-primary" />
+            <Volume2 className="h-5 w-5 text-primary" />
             {isPlaying && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse border-2 border-background" />
             )}
           </>
         )}
