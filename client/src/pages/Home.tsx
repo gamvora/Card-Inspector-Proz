@@ -27,6 +27,7 @@ import {
   Eraser,
   Globe,
   X,
+  Info,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -78,6 +79,7 @@ export default function Home() {
   const prevResultsRef = useRef<CheckResult[]>([]);
   const notifiedCardsRef = useRef<Set<number>>(new Set());
   const [isFocused, setIsFocused] = useState(false);
+  const [showCardsHelp, setShowCardsHelp] = useState(false);
 
   const { data: sites = [] } = useQuery<Site[]>({
     queryKey: ['/api/sites'],
@@ -511,6 +513,15 @@ export default function Home() {
                 >
                   <Eraser className="w-4 h-4 text-amber-500" />
                 </motion.button>
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowCardsHelp(true)}
+                  className="rounded-xl bg-blue-500/10 border border-blue-500/20"
+                  data-testid="button-cards-help"
+                >
+                  <Info className="w-4 h-4 text-blue-500" />
+                </Button>
               </div>
               <motion.div 
                 key={cardsInputState.split('\n').filter(l => l.trim().length > 0).length}
@@ -810,6 +821,127 @@ export default function Home() {
           </Link>
         </div>
       </nav>
+
+      {/* Cards Help Popup */}
+      <AnimatePresence>
+        {showCardsHelp && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowCardsHelp(false)}
+            data-testid="overlay-cards-help"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-card border border-border rounded-3xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+              data-testid="popup-cards-help"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-xl font-bold flex items-center gap-2" data-testid="text-cards-help-title">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                  Card Format Guide
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowCardsHelp(false)}
+                  className="rounded-xl"
+                  data-testid="button-close-cards-help"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-5">
+                {/* Card Format Section */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Supported Formats</h3>
+                  <div className="bg-muted/50 rounded-xl p-4 space-y-2 font-mono text-xs">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <span>4111111111111111|12|2025|123</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <span>4111111111111111|12|25|123</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <span>4111111111111111|1225|123</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Format: <span className="font-mono">CardNumber|Month|Year|CVV</span>
+                  </p>
+                </div>
+
+                {/* Clean Feature Section */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <Eraser className="w-4 h-4 text-amber-500" />
+                    Clean Feature
+                  </h3>
+                  <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-xl p-4">
+                    <p className="text-sm mb-3">The clean button automatically:</p>
+                    <ul className="space-y-2 text-sm">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <span>Removes duplicate cards</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <span>Removes expired cards (past dates)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <span>Removes invalid format cards</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <span>Fixes format issues (MMYY to MM|YY)</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Video Tutorial */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Video Tutorial</h3>
+                  <div className="rounded-xl overflow-hidden border border-border bg-muted/30">
+                    <div className="aspect-video flex items-center justify-center bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                      <div className="text-center p-4">
+                        <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-purple-500/20 flex items-center justify-center">
+                          <Play className="w-8 h-8 text-purple-500" />
+                        </div>
+                        <p className="text-sm font-medium">Tutorial Coming Soon</p>
+                        <p className="text-xs text-muted-foreground mt-1">Watch how to use the card checker</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tips */}
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    Pro Tips
+                  </h4>
+                  <ul className="text-xs space-y-1.5 text-muted-foreground">
+                    <li>• Use the upload button to import cards from .txt files</li>
+                    <li>• Always clean cards before checking to save credits</li>
+                    <li>• Each card check costs 1 credit</li>
+                  </ul>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

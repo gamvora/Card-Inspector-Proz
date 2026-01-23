@@ -183,6 +183,19 @@ export default function Settings() {
     },
   });
 
+  const deleteProxyMutation = useMutation({
+    mutationFn: async (proxyId: number) => {
+      await authFetch(`/api/proxies/${proxyId}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/proxies'] });
+      toast({ title: 'Proxy deleted', sound: false });
+    },
+    onError: () => {
+      toast({ title: 'Failed to delete proxy', variant: 'destructive' });
+    },
+  });
+
   const testProxyMutation = useMutation({
     mutationFn: async (proxy: string) => {
       setTestingProxy(proxy);
@@ -667,12 +680,12 @@ export default function Settings() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => clearProxiesMutation.mutate()}
-                          disabled={clearProxiesMutation.isPending || stats.active}
+                          onClick={() => deleteProxyMutation.mutate(proxy.id)}
+                          disabled={deleteProxyMutation.isPending || stats.active}
                           className="rounded-xl text-rose-500"
                           data-testid={`button-delete-proxy-${proxy.id}`}
                         >
-                          {clearProxiesMutation.isPending ? (
+                          {deleteProxyMutation.isPending ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <Trash2 className="w-4 h-4" />
