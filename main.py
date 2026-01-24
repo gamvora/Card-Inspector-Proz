@@ -2,28 +2,30 @@ import os
 import threading
 from flask import Flask
 
-# 1. إعداد تطبيق الويب (للموقع)
+# --- إعداد الموقع ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "الموقع يعمل بنجاح على Railway!"
+    return "The server is running successfully on Railway!"
 
 def run_web_server():
-    # Railway يحتاج الاستماع لهذا المنفذ لتفعيل الرابط
+    # Railway يحدد المنفذ تلقائياً عبر متغير البيئة PORT
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# 2. إعداد البوت (تأكد من استدعاء دالة تشغيل بوتك هنا)
-def run_telegram_bot():
-    print("جاري تشغيل بوت التيليجرام...")
-    # هنا تضع الكود الذي يشغل البوت الخاص بك، مثلاً:
-    # my_bot.polling() 
+# --- إعداد البوت ---
+def run_bot():
+    print("Starting Telegram Bot...")
+    # هنا ضع كود تشغيل البوت الخاص بك، مثلاً:
+    # bot.polling(none_stop=True)
+    pass
 
 if __name__ == "__main__":
-    # تشغيل السيرفر في خيط (Thread) منفصل لكي لا يتوقف البوت
-    t = threading.Thread(target=run_web_server)
-    t.start()
-    
-    # تشغيل البوت في الخيط الرئيسي
-    run_telegram_bot()
+    # 1. تشغيل الموقع في خيط (Thread) منفصل لكي لا يتعطل البوت
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
+
+    # 2. تشغيل البوت في الخيط الرئيسي
+    run_bot()
