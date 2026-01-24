@@ -1,11 +1,14 @@
 [project]
-name = "repl-nix-workspace"
+name = "lucewebsitechk"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
+description = "Web App and Telegram Bot"
 dependencies = [
-    "colorama>=0.4.6",
-    "fake-useragent>=2.2.0",
-    "requests>=2.32.5",
-    "urllib3>=2.6.3",
+    "flask",
+    "python-telegram-bot",
+    "requests",
+    "gunicorn"
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
