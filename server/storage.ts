@@ -1,16 +1,6 @@
-import { db } from "./db";
+import fs from "fs";
+import path from "path";
 import {
-  settings,
-  results,
-  users,
-  sites,
-  proxies,
-  checkSessions,
-  creditTransactions,
-  referrals,
-  dailySpins,
-  dailyStreaks,
-  notificationSettings,
   type Settings,
   type InsertSettings,
   type CheckResult,
@@ -27,9 +17,39 @@ import {
   type DailySpin,
   type DailyStreak,
   type NotificationSettings,
+  type InsertNotificationSettings,
   ADMIN_TELEGRAM_ID,
 } from "@shared/schema";
-import { eq, desc, and, sql, gte } from "drizzle-orm";
+
+const DATA_DIR = path.join(process.cwd(), "data");
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function getFilePath(filename: string): string {
+  return path.join(DATA_DIR, `${filename}.json`);
+}
+
+function readJSON<T>(filename: string): T[] {
+  const filePath = getFilePath(filename);
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  const data = fs.readFileSync(filePath, "utf-8");
+  return JSON.parse(data);
+}
+
+function writeJSON<T>(filename: string, data: T[]): void {
+  const filePath = getFilePath(filename);
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function generateId(items: { id: number }[]): number {
+  if (items.length === 0) return 1;
+  return Math.max(...items.map((item) => item.id)) + 1;
+}
 
 export interface IStorage {
   // Users
@@ -101,21 +121,36 @@ export interface IStorage {
   updateNotificationSettings(userId: number, settings: Partial<NotificationSettings>): Promise<NotificationSettings>;
 }
 
-export class DatabaseStorage implements IStorage {
+export class FileStorage implements IStorage {
   // Users
   async getUserByTelegramId(telegramId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-    return user;
+    const users = readJSON<User>("users");
+    return users.find((u) => u.telegramId === telegramId);
   }
 
   async createUser(user: InsertUser): Promise<User> {
+    const users = readJSON<User>("users");
     const isAdmin = user.telegramId === ADMIN_TELEGRAM_ID;
-    const [created] = await db.insert(users).values({
-      ...user,
-      isAdmin,
+    const newUser: User = {
+      id: generateId(users),
+      telegramId: user.telegramId,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      photoUrl: user.photoUrl,
       credits: isAdmin ? 999999 : (user.credits || 0),
-    }).returning();
-    return created;
+      totalCharged: user.totalCharged || 0,
+      totalRejected: user.totalRejected || 0,
+      isAdmin,
+      hasSeenTutorial: user.hasSeenTutorial || false,
+      referralCode: user.referralCode,
+      referredBy: user.referredBy,
+      createdAt: new Date(),
+      lastActiveAt: new Date(),
+    };
+    users.push(newUser);
+    writeJSON("users", users);
+    return newUser;
   }
 
   async getOrCreateUser(user: InsertUser): Promise<User> {
@@ -123,317 +158,434 @@ export class DatabaseStorage implements IStorage {
     if (existing) {
       return existing;
     }
-    
-    try {
-      const isAdmin = user.telegramId === ADMIN_TELEGRAM_ID;
-      const [created] = await db.insert(users).values({
-        ...user,
-        isAdmin,
-        credits: isAdmin ? 999999 : (user.credits || 0),
-      }).onConflictDoNothing({ target: users.telegramId }).returning();
-      
-      if (created) {
-        return created;
-      }
-      
-      const retryFetch = await this.getUserByTelegramId(user.telegramId);
-      if (retryFetch) {
-        return retryFetch;
-      }
-      
-      throw new Error('Failed to create or find user');
-    } catch (error) {
-      const retryFetch = await this.getUserByTelegramId(user.telegramId);
-      if (retryFetch) {
-        return retryFetch;
-      }
-      throw error;
-    }
+    return this.createUser(user);
   }
 
   async updateUser(telegramId: string, data: Partial<InsertUser>): Promise<User | undefined> {
-    const [updated] = await db
-      .update(users)
-      .set({ ...data, lastActiveAt: new Date() })
-      .where(eq(users.telegramId, telegramId))
-      .returning();
-    return updated;
+    const users = readJSON<User>("users");
+    const index = users.findIndex((u) => u.telegramId === telegramId);
+    if (index === -1) return undefined;
+
+    users[index] = {
+      ...users[index],
+      ...data,
+      lastActiveAt: new Date(),
+    };
+    writeJSON("users", users);
+    return users[index];
   }
 
   async updateUserCredits(telegramId: string, amount: number): Promise<User | undefined> {
     const user = await this.getUserByTelegramId(telegramId);
     if (!user) return undefined;
-    
+
     const newCredits = Math.max(0, user.credits + amount);
-    const [updated] = await db
-      .update(users)
-      .set({ credits: newCredits, lastActiveAt: new Date() })
-      .where(eq(users.telegramId, telegramId))
-      .returning();
-    return updated;
+    const users = readJSON<User>("users");
+    const index = users.findIndex((u) => u.telegramId === telegramId);
+    if (index === -1) return undefined;
+
+    users[index] = {
+      ...users[index],
+      credits: newCredits,
+      lastActiveAt: new Date(),
+    };
+    writeJSON("users", users);
+    return users[index];
   }
 
   async updateUserStats(telegramId: string, charged: number, rejected: number): Promise<void> {
     const user = await this.getUserByTelegramId(telegramId);
     if (!user) return;
-    
-    await db
-      .update(users)
-      .set({
-        totalCharged: user.totalCharged + charged,
-        totalRejected: user.totalRejected + rejected,
-        lastActiveAt: new Date(),
-      })
-      .where(eq(users.telegramId, telegramId));
+
+    const users = readJSON<User>("users");
+    const index = users.findIndex((u) => u.telegramId === telegramId);
+    if (index === -1) return;
+
+    users[index] = {
+      ...users[index],
+      totalCharged: user.totalCharged + charged,
+      totalRejected: user.totalRejected + rejected,
+      lastActiveAt: new Date(),
+    };
+    writeJSON("users", users);
   }
 
   async markTutorialSeen(telegramId: string): Promise<User | undefined> {
-    const [updated] = await db
-      .update(users)
-      .set({ hasSeenTutorial: true, lastActiveAt: new Date() })
-      .where(eq(users.telegramId, telegramId))
-      .returning();
-    return updated;
+    const users = readJSON<User>("users");
+    const index = users.findIndex((u) => u.telegramId === telegramId);
+    if (index === -1) return undefined;
+
+    users[index] = {
+      ...users[index],
+      hasSeenTutorial: true,
+      lastActiveAt: new Date(),
+    };
+    writeJSON("users", users);
+    return users[index];
   }
 
   // Sites
   async getUserSites(userId: number): Promise<Site[]> {
-    return db.select().from(sites).where(eq(sites.userId, userId)).orderBy(desc(sites.createdAt));
+    const sites = readJSON<Site>("sites");
+    return sites
+      .filter((s) => s.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getActiveSite(userId: number): Promise<Site | undefined> {
-    const [site] = await db.select().from(sites).where(and(eq(sites.userId, userId), eq(sites.isActive, true))).limit(1);
-    return site;
+    const sites = readJSON<Site>("sites");
+    return sites.find((s) => s.userId === userId && s.isActive);
   }
 
   async getSiteById(id: number): Promise<Site | undefined> {
-    const [site] = await db.select().from(sites).where(eq(sites.id, id)).limit(1);
-    return site;
+    const sites = readJSON<Site>("sites");
+    return sites.find((s) => s.id === id);
   }
 
   async addSite(site: InsertSite): Promise<Site> {
-    const [created] = await db.insert(sites).values(site).returning();
-    return created;
+    const sites = readJSON<Site>("sites");
+    const newSite: Site = {
+      id: generateId(sites),
+      userId: site.userId,
+      name: site.name,
+      url: site.url,
+      productPrice: site.productPrice,
+      isActive: site.isActive || false,
+      createdAt: new Date(),
+    };
+    sites.push(newSite);
+    writeJSON("sites", sites);
+    return newSite;
   }
 
   async updateSite(id: number, data: Partial<InsertSite>): Promise<Site | undefined> {
-    const [updated] = await db.update(sites).set(data).where(eq(sites.id, id)).returning();
-    return updated;
+    const sites = readJSON<Site>("sites");
+    const index = sites.findIndex((s) => s.id === id);
+    if (index === -1) return undefined;
+
+    sites[index] = {
+      ...sites[index],
+      ...data,
+    };
+    writeJSON("sites", sites);
+    return sites[index];
   }
 
   async deleteSite(id: number): Promise<void> {
-    await db.delete(sites).where(eq(sites.id, id));
+    const sites = readJSON<Site>("sites");
+    const filtered = sites.filter((s) => s.id !== id);
+    writeJSON("sites", filtered);
   }
 
   async setActiveSite(userId: number, siteId: number): Promise<void> {
-    await db.update(sites).set({ isActive: false }).where(eq(sites.userId, userId));
-    await db.update(sites).set({ isActive: true }).where(eq(sites.id, siteId));
+    const sites = readJSON<Site>("sites");
+    const updated = sites.map((s) => {
+      if (s.userId === userId) {
+        return { ...s, isActive: s.id === siteId };
+      }
+      return s;
+    });
+    writeJSON("sites", updated);
   }
 
   async updateSitePrice(siteId: number, price: string): Promise<void> {
-    await db.update(sites).set({ productPrice: price }).where(eq(sites.id, siteId));
+    const sites = readJSON<Site>("sites");
+    const index = sites.findIndex((s) => s.id === siteId);
+    if (index !== -1) {
+      sites[index].productPrice = price;
+      writeJSON("sites", sites);
+    }
   }
 
   // Proxies
   async getUserProxies(userId: number): Promise<Proxy[]> {
-    return db.select().from(proxies).where(eq(proxies.userId, userId)).orderBy(desc(proxies.createdAt));
+    const proxies = readJSON<Proxy>("proxies");
+    return proxies
+      .filter((p) => p.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async addProxy(proxy: InsertProxy): Promise<Proxy> {
-    const [created] = await db.insert(proxies).values(proxy).returning();
-    return created;
+    const proxies = readJSON<Proxy>("proxies");
+    const newProxy: Proxy = {
+      id: generateId(proxies),
+      userId: proxy.userId,
+      proxy: proxy.proxy,
+      isValid: proxy.isValid ?? true,
+      lastChecked: proxy.lastChecked,
+      createdAt: new Date(),
+    };
+    proxies.push(newProxy);
+    writeJSON("proxies", proxies);
+    return newProxy;
   }
 
   async updateProxy(id: number, data: Partial<InsertProxy>): Promise<void> {
-    await db.update(proxies).set(data).where(eq(proxies.id, id));
+    const proxies = readJSON<Proxy>("proxies");
+    const index = proxies.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      proxies[index] = { ...proxies[index], ...data };
+      writeJSON("proxies", proxies);
+    }
   }
 
   async deleteProxy(id: number): Promise<void> {
-    await db.delete(proxies).where(eq(proxies.id, id));
+    const proxies = readJSON<Proxy>("proxies");
+    const filtered = proxies.filter((p) => p.id !== id);
+    writeJSON("proxies", filtered);
   }
 
   async deleteAllUserProxies(userId: number): Promise<void> {
-    await db.delete(proxies).where(eq(proxies.userId, userId));
+    const proxies = readJSON<Proxy>("proxies");
+    const filtered = proxies.filter((p) => p.userId !== userId);
+    writeJSON("proxies", filtered);
   }
 
   // Settings (global fallback)
   async getSettings(): Promise<Settings | undefined> {
-    const [config] = await db.select().from(settings).limit(1);
-    return config;
+    const settingsList = readJSON<Settings>("settings");
+    return settingsList[0];
   }
 
   async updateSettings(newSettings: InsertSettings): Promise<Settings> {
-    const existing = await this.getSettings();
-    if (existing) {
-      const [updated] = await db
-        .update(settings)
-        .set({ ...newSettings, updatedAt: new Date() })
-        .where(eq(settings.id, existing.id))
-        .returning();
-      return updated;
+    const settingsList = readJSON<Settings>("settings");
+    if (settingsList.length > 0) {
+      settingsList[0] = {
+        ...settingsList[0],
+        ...newSettings,
+        updatedAt: new Date(),
+      };
+      writeJSON("settings", settingsList);
+      return settingsList[0];
     } else {
-      const [created] = await db.insert(settings).values(newSettings).returning();
-      return created;
+      const newSetting: Settings = {
+        id: 1,
+        targetUrl: newSettings.targetUrl || "",
+        proxyList: newSettings.proxyList || "",
+        proxyEnabled: newSettings.proxyEnabled ?? true,
+        updatedAt: new Date(),
+      };
+      settingsList.push(newSetting);
+      writeJSON("settings", settingsList);
+      return newSetting;
     }
   }
 
   // Results
   async addResult(result: { card: string; status: string; message?: string; userId?: number; sessionId?: string }): Promise<CheckResult> {
-    const [saved] = await db.insert(results).values({
+    const results = readJSON<CheckResult>("results");
+    const newResult: CheckResult = {
+      id: generateId(results),
       card: result.card,
       status: result.status,
       message: result.message || "",
       userId: result.userId,
       sessionId: result.sessionId,
-    }).returning();
-    return saved;
+      createdAt: new Date(),
+    };
+    results.push(newResult);
+    writeJSON("results", results);
+    return newResult;
   }
 
   async getResults(limit = 100, userId?: number): Promise<CheckResult[]> {
+    const results = readJSON<CheckResult>("results");
+    let filtered = results;
     if (userId) {
-      return db.select().from(results).where(eq(results.userId, userId)).orderBy(desc(results.createdAt)).limit(limit);
+      filtered = results.filter((r) => r.userId === userId);
     }
-    return db.select().from(results).orderBy(desc(results.createdAt)).limit(limit);
+    return filtered
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
   }
 
   async clearResults(userId?: number): Promise<void> {
+    const results = readJSON<CheckResult>("results");
     if (userId) {
-      await db.delete(results).where(eq(results.userId, userId));
+      const filtered = results.filter((r) => r.userId !== userId);
+      writeJSON("results", filtered);
     } else {
-      await db.delete(results);
+      writeJSON("results", []);
     }
   }
 
   // Check Sessions
   async createCheckSession(session: InsertCheckSession): Promise<CheckSession> {
-    const [created] = await db.insert(checkSessions).values(session).returning();
-    return created;
+    const sessions = readJSON<CheckSession>("checkSessions");
+    const newSession: CheckSession = {
+      id: generateId(sessions),
+      sessionId: session.sessionId,
+      userId: session.userId,
+      siteId: session.siteId,
+      totalCards: session.totalCards || 0,
+      processedCards: session.processedCards || 0,
+      chargedCards: session.chargedCards || 0,
+      rejectedCards: session.rejectedCards || 0,
+      status: session.status || "pending",
+      createdAt: new Date(),
+      completedAt: session.completedAt,
+    };
+    sessions.push(newSession);
+    writeJSON("checkSessions", sessions);
+    return newSession;
   }
 
   async updateCheckSession(sessionId: string, data: Partial<InsertCheckSession>): Promise<void> {
-    await db.update(checkSessions).set(data).where(eq(checkSessions.sessionId, sessionId));
+    const sessions = readJSON<CheckSession>("checkSessions");
+    const index = sessions.findIndex((s) => s.sessionId === sessionId);
+    if (index !== -1) {
+      sessions[index] = { ...sessions[index], ...data };
+      writeJSON("checkSessions", sessions);
+    }
   }
 
   async getCheckSession(sessionId: string): Promise<CheckSession | undefined> {
-    const [session] = await db.select().from(checkSessions).where(eq(checkSessions.sessionId, sessionId)).limit(1);
-    return session;
+    const sessions = readJSON<CheckSession>("checkSessions");
+    return sessions.find((s) => s.sessionId === sessionId);
   }
 
   // Credit Transactions
   async addCreditTransaction(userId: number, amount: number, type: string, description?: string, adminId?: string): Promise<CreditTransaction> {
-    const [created] = await db.insert(creditTransactions).values({
+    const transactions = readJSON<CreditTransaction>("creditTransactions");
+    const newTransaction: CreditTransaction = {
+      id: generateId(transactions),
       userId,
       amount,
       type,
       description,
       adminId,
-    }).returning();
-    return created;
+      createdAt: new Date(),
+    };
+    transactions.push(newTransaction);
+    writeJSON("creditTransactions", transactions);
+    return newTransaction;
   }
 
   async getCreditTransactions(userId: number, limit = 50): Promise<CreditTransaction[]> {
-    return db.select().from(creditTransactions).where(eq(creditTransactions.userId, userId)).orderBy(desc(creditTransactions.createdAt)).limit(limit);
+    const transactions = readJSON<CreditTransaction>("creditTransactions");
+    return transactions
+      .filter((t) => t.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
   }
 
   async getGlobalStats(): Promise<{ totalCards: number; totalLive: number; totalDead: number; hitRate: number }> {
-    const result = await db.select({
-      totalLive: sql<number>`COALESCE(SUM(${users.totalCharged}), 0)::int`,
-      totalDead: sql<number>`COALESCE(SUM(${users.totalRejected}), 0)::int`,
-    }).from(users);
-    
-    const totalLive = result[0]?.totalLive || 0;
-    const totalDead = result[0]?.totalDead || 0;
+    const users = readJSON<User>("users");
+    const totalLive = users.reduce((sum, u) => sum + u.totalCharged, 0);
+    const totalDead = users.reduce((sum, u) => sum + u.totalRejected, 0);
     const totalCards = totalLive + totalDead;
     const hitRate = totalCards > 0 ? (totalLive / totalCards) * 100 : 0;
-    
     return { totalCards, totalLive, totalDead, hitRate };
   }
 
   async getLeaderboard(limit = 10): Promise<Array<{ userId: number; username: string | null; firstName: string | null; lastName: string | null; photoUrl: string | null; totalCharged: number; rank: number }>> {
-    const topUsers = await db.select({
-      userId: users.id,
-      username: users.username,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      photoUrl: users.photoUrl,
-      totalCharged: users.totalCharged,
-    }).from(users).orderBy(desc(users.totalCharged)).limit(limit);
-    
-    return topUsers.map((user, index) => ({
-      ...user,
+    const users = readJSON<User>("users");
+    const sorted = users
+      .sort((a, b) => b.totalCharged - a.totalCharged)
+      .slice(0, limit);
+    return sorted.map((user, index) => ({
+      userId: user.id,
+      username: user.username || null,
+      firstName: user.firstName || null,
+      lastName: user.lastName || null,
+      photoUrl: user.photoUrl || null,
+      totalCharged: user.totalCharged,
       rank: index + 1,
     }));
   }
 
   // Referrals
   async getUserByReferralCode(code: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.referralCode, code)).limit(1);
-    return user;
+    const users = readJSON<User>("users");
+    return users.find((u) => u.referralCode === code);
   }
 
   async createReferral(referrerId: number, referredId: number, code: string): Promise<Referral> {
-    const [referral] = await db.insert(referrals).values({
+    const referrals = readJSON<Referral>("referrals");
+    const newReferral: Referral = {
+      id: generateId(referrals),
       referrerId,
       referredId,
       referralCode: code,
       creditsAwarded: 100,
-    }).returning();
-    return referral;
+      createdAt: new Date(),
+    };
+    referrals.push(newReferral);
+    writeJSON("referrals", referrals);
+    return newReferral;
   }
 
   async getReferralsByUser(userId: number): Promise<Referral[]> {
-    return db.select().from(referrals).where(eq(referrals.referrerId, userId)).orderBy(desc(referrals.createdAt));
+    const referrals = readJSON<Referral>("referrals");
+    return referrals
+      .filter((r) => r.referrerId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getReferralCount(userId: number): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)::int` }).from(referrals).where(eq(referrals.referrerId, userId));
-    return result[0]?.count || 0;
+    const referrals = readJSON<Referral>("referrals");
+    return referrals.filter((r) => r.referrerId === userId).length;
   }
 
   async generateReferralCode(userId: number): Promise<string> {
-    const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    if (user[0]?.referralCode) {
-      return user[0].referralCode;
+    const users = readJSON<User>("users");
+    const user = users.find((u) => u.id === userId);
+    if (user?.referralCode) {
+      return user.referralCode;
     }
-    const code = 'NX' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+    const code = "NX" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const index = users.findIndex((u) => u.id === userId);
+    if (index !== -1) {
+      users[index].referralCode = code;
+      writeJSON("users", users);
+    }
     return code;
   }
 
   // Daily Spin
   async getLastSpin(userId: number): Promise<DailySpin | undefined> {
-    const [spin] = await db.select().from(dailySpins).where(eq(dailySpins.userId, userId)).orderBy(desc(dailySpins.spinDate)).limit(1);
-    return spin;
+    const spins = readJSON<DailySpin>("dailySpins");
+    const userSpins = spins
+      .filter((s) => s.userId === userId)
+      .sort((a, b) => new Date(b.spinDate).getTime() - new Date(a.spinDate).getTime());
+    return userSpins[0];
   }
 
   async canSpinToday(userId: number): Promise<boolean> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const [spin] = await db.select().from(dailySpins)
-      .where(and(eq(dailySpins.userId, userId), gte(dailySpins.spinDate, today)))
-      .limit(1);
-    return !spin;
+    const spins = readJSON<DailySpin>("dailySpins");
+    const hasSpunToday = spins.some(
+      (s) => s.userId === userId && new Date(s.spinDate) >= today
+    );
+    return !hasSpunToday;
   }
 
   async recordSpin(userId: number, creditsWon: number): Promise<DailySpin> {
-    const [spin] = await db.insert(dailySpins).values({
+    const spins = readJSON<DailySpin>("dailySpins");
+    const newSpin: DailySpin = {
+      id: generateId(spins),
       userId,
       creditsWon,
-    }).returning();
-    return spin;
+      spinDate: new Date(),
+    };
+    spins.push(newSpin);
+    writeJSON("dailySpins", spins);
+    return newSpin;
   }
 
   // Daily Streak
   async getStreak(userId: number): Promise<DailyStreak | undefined> {
-    const [streak] = await db.select().from(dailyStreaks).where(eq(dailyStreaks.userId, userId)).limit(1);
-    return streak;
+    const streaks = readJSON<DailyStreak>("dailyStreaks");
+    return streaks.find((s) => s.userId === userId);
   }
 
   async claimStreak(userId: number): Promise<{ streak: DailyStreak; reward: number; canClaim: boolean }> {
-    let streak = await this.getStreak(userId);
+    const streaks = readJSON<DailyStreak>("dailyStreaks");
+    const existingIndex = streaks.findIndex((s) => s.userId === userId);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     const streakRewards: { [key: number]: number } = {
       1: 30, 2: 30, 3: 45, 4: 45, 5: 45, 6: 45, 7: 70,
       8: 70, 9: 70, 10: 70, 11: 70, 12: 70, 13: 70, 14: 110,
@@ -442,69 +594,86 @@ export class DatabaseStorage implements IStorage {
       27: 110, 28: 110, 29: 110, 30: 210,
     };
 
-    if (!streak) {
-      const [newStreak] = await db.insert(dailyStreaks).values({
+    if (existingIndex === -1) {
+      const newStreak: DailyStreak = {
+        id: generateId(streaks),
         userId,
         currentStreak: 1,
         longestStreak: 1,
         lastClaimDate: now,
         totalClaimed: 1,
-      }).returning();
+      };
+      streaks.push(newStreak);
+      writeJSON("dailyStreaks", streaks);
       const reward = streakRewards[1] || 30;
       return { streak: newStreak, reward, canClaim: true };
     }
 
+    const streak = streaks[existingIndex];
     const lastClaim = streak.lastClaimDate ? new Date(streak.lastClaimDate) : null;
     const lastClaimDate = lastClaim ? new Date(lastClaim.getFullYear(), lastClaim.getMonth(), lastClaim.getDate()) : null;
-    
+
     if (lastClaimDate && lastClaimDate.getTime() === today.getTime()) {
       return { streak, reward: 0, canClaim: false };
     }
 
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
-    let newStreak = 1;
+
+    let newStreakValue = 1;
     if (lastClaimDate && lastClaimDate.getTime() === yesterday.getTime()) {
-      newStreak = Math.min(streak.currentStreak + 1, 30);
+      newStreakValue = Math.min(streak.currentStreak + 1, 30);
     }
 
-    const reward = streakRewards[newStreak] || 30;
-    const longestStreak = Math.max(streak.longestStreak, newStreak);
+    const reward = streakRewards[newStreakValue] || 30;
+    const longestStreak = Math.max(streak.longestStreak, newStreakValue);
 
-    const [updated] = await db.update(dailyStreaks).set({
-      currentStreak: newStreak,
+    const updatedStreak: DailyStreak = {
+      ...streak,
+      currentStreak: newStreakValue,
       longestStreak,
       lastClaimDate: now,
       totalClaimed: streak.totalClaimed + 1,
-    }).where(eq(dailyStreaks.userId, userId)).returning();
+    };
 
-    return { streak: updated, reward, canClaim: true };
+    streaks[existingIndex] = updatedStreak;
+    writeJSON("dailyStreaks", streaks);
+
+    return { streak: updatedStreak, reward, canClaim: true };
   }
 
   // Notification Settings
   async getNotificationSettings(userId: number): Promise<NotificationSettings | undefined> {
-    const [settings] = await db.select().from(notificationSettings).where(eq(notificationSettings.userId, userId)).limit(1);
-    return settings;
+    const settings = readJSON<NotificationSettings>("notificationSettings");
+    return settings.find((s) => s.userId === userId);
   }
 
   async updateNotificationSettings(userId: number, newSettings: Partial<NotificationSettings>): Promise<NotificationSettings> {
-    const existing = await this.getNotificationSettings(userId);
-    if (existing) {
-      const [updated] = await db.update(notificationSettings).set({
+    const settings = readJSON<NotificationSettings>("notificationSettings");
+    const existingIndex = settings.findIndex((s) => s.userId === userId);
+
+    if (existingIndex !== -1) {
+      settings[existingIndex] = {
+        ...settings[existingIndex],
         ...newSettings,
         updatedAt: new Date(),
-      }).where(eq(notificationSettings.userId, userId)).returning();
-      return updated;
+      };
+      writeJSON("notificationSettings", settings);
+      return settings[existingIndex];
     }
-    const [created] = await db.insert(notificationSettings).values({
+
+    const created: NotificationSettings = {
+      id: generateId(settings),
       userId,
       approvedAlerts: newSettings.approvedAlerts ?? true,
       dailySummary: newSettings.dailySummary ?? false,
       streakReminder: newSettings.streakReminder ?? true,
-    }).returning();
+      updatedAt: new Date(),
+    };
+    settings.push(created);
+    writeJSON("notificationSettings", settings);
     return created;
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new FileStorage();

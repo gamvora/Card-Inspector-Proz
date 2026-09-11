@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Telegram Web App for Shopify card checking with multi-user support, credit system, and admin panel. The system validates payment cards against Shopify stores by simulating the checkout process, using rotating proxies for requests. It features real-time WebSocket updates, Telegram authentication, credit-based checking, and a mobile-optimized React frontend.
+This is a Telegram Web App for Shopify card checking with multi-user support, credit system, and admin panel. The system validates payment cards against Shopify stores by simulating the checkout process, using rotating proxies for requests. It features real-time WebSocket updates, Telegram authentication, credit-based checking, and a mobile-optimized React frontend. **No database required** - all data is stored in JSON files.
 
 ## Recent Changes (January 2026)
 
@@ -10,7 +10,7 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - **Automatic Price Capture**: When checking cards, the product price is automatically saved to the site
 - **Display in Home**: Price shown next to site name in the site selector (green badge)
 - **Display in Settings**: Price shown next to site name in the sites list
-- **Persistent Storage**: Price saved to database and displayed even after page refresh
+- **Persistent Storage**: Price saved to JSON files and displayed even after page refresh
 
 ### Security Captcha System
 - **4-Digit Number Captcha**: Users must enter a 4-digit code shown in a colorful styled image
@@ -41,7 +41,7 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - Toggle APPROVED card alerts via Telegram
 - Toggle daily summary reports
 - Toggle streak reminder notifications
-- Settings persisted in database
+- Settings persisted in JSON files
 
 ### Interactive Tutorial System
 - **6-Step Tutorial**: Welcome, Cards, Site Selection, Start, Results, Settings
@@ -50,7 +50,7 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 - **Animated Demos**: Each step has CSS/Framer Motion animations demonstrating the feature
 - **Keyboard Navigation**: Arrow keys (left/right), Enter (next), Escape (close)
 - **Accessibility**: ARIA attributes, focus management, screen reader support
-- **Persistence**: Tutorial completion saved to database via `/api/tutorial/complete`
+- **Persistence**: Tutorial completion saved to JSON files via `/api/tutorial/complete`
 
 ### Card Processing Improvements
 - **Parallel Batch Processing**: Cards are processed in parallel batches (up to 10 cards at once) for maximum speed
@@ -66,7 +66,7 @@ This is a Telegram Web App for Shopify card checking with multi-user support, cr
 
 ### Multi-User Credit System
 - 1 credit = 1 card check (deducted immediately per card)
-- Credits stored persistently in PostgreSQL database
+- Credits stored in JSON files (no database required)
 - Admin can add credits via `/credit [user_id] [amount]` bot command
 - Credit transactions logged for accountability
 - Real-time WebSocket updates for credit changes
@@ -146,13 +146,13 @@ Preferred communication style: Simple, everyday language (Arabic).
 - **Production Security**: x-telegram-id header fallback is blocked when NODE_ENV !== 'development'
 
 ### Database Schema
-- **users**: Telegram user data, credits, statistics
-- **sites**: User's Shopify sites with custom names
-- **proxies**: User's proxy list
-- **results**: Card check results with user tracking
-- **check_sessions**: Session tracking for progress
-- **credit_transactions**: Credit history log
-- **settings**: Global fallback configuration
+- **users**: Telegram user data, credits, statistics (JSON file)
+- **sites**: User's Shopify sites with custom names (JSON file)
+- **proxies**: User's proxy list (JSON file)
+- **results**: Card check results with user tracking (JSON file)
+- **check_sessions**: Session tracking for progress (JSON file)
+- **credit_transactions**: Credit history log (JSON file)
+- **settings**: Global fallback configuration (JSON file)
 
 ### API Endpoints
 - `POST /api/auth/login` - Telegram authentication
@@ -184,14 +184,14 @@ Preferred communication style: Simple, everyday language (Arabic).
 
 ## Environment Variables
 
-- `DATABASE_URL`: PostgreSQL connection string
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token for authentication
 - `TELEGRAM_ADMIN_ID`: Admin user's Telegram ID (5197976453)
 - `SESSION_SECRET`: Session encryption secret
 
 ## Key Files
 
-- `shared/schema.ts`: Database schema definitions
+- `shared/schema.ts`: Type definitions and Zod schemas
+- `server/storage.ts`: JSON file-based storage system
 - `server/routes.ts`: All API endpoints
 - `server/services/telegram.ts`: Telegram authentication service
 - `server/services/telegramBot.ts`: Bot command handling
