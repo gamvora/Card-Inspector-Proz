@@ -21,7 +21,7 @@ import {
   ADMIN_TELEGRAM_ID,
 } from "@shared/schema";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
