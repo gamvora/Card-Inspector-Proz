@@ -120,6 +120,16 @@ export const api = {
       },
     }
   },
+  results: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/results',
+    },
+    clear: {
+      method: 'DELETE' as const,
+      path: '/api/results',
+    },
+  },
   telegram: {
     webhook: {
       method: 'POST' as const,
@@ -139,3 +149,4 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
   }
   return url;
 }
+
