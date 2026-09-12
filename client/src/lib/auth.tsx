@@ -131,37 +131,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       setIsLoading(true);
-      
-      // Always try Telegram WebApp first if available
-      const tg = window.Telegram?.WebApp;
-      if (tg && tg.initData) {
-        tg.ready();
-        tg.expand();
-        
-        const success = await login(tg.initData);
-        if (success) {
-          setIsLoading(false);
-          return;
+      console.log('[Auth] Starting authentication flow...');
+
+      // Always try Telegram WebApp first if available, but never let this
+      // block rendering the app if Telegram isn't present (e.g. regular web browser)
+      try {
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+          console.log('[Auth] Telegram.WebApp detected');
+          if (tg.initData) {
+            try {
+              tg.ready();
+              tg.expand();
+            } catch (tgError) {
+              console.warn('[Auth] Telegram.WebApp.ready()/expand() failed:', tgError);
+            }
+
+            try {
+              const success = await login(tg.initData);
+              if (success) {
+                console.log('[Auth] Logged in via Telegram initData');
+                setIsLoading(false);
+                return;
+              }
+              console.warn('[Auth] Telegram login did not return a valid session, falling back');
+            } catch (loginError) {
+              console.error('[Auth] Telegram login threw an error:', loginError);
+            }
+          } else {
+            console.warn('[Auth] Telegram.WebApp present but initData is empty (likely opened outside Telegram)');
+          }
+        } else {
+          console.log('[Auth] Telegram.WebApp not found - running in regular web browser mode');
         }
-      }
-      
-      // Try stored token
-      const storedToken = localStorage.getItem('authToken');
-      if (storedToken) {
-        setToken(storedToken);
-        const refreshed = await refreshUser();
-        if (refreshed) {
-          setIsLoading(false);
-          return;
-        }
-        // Token was invalid, it's been cleared
+      } catch (telegramAccessError) {
+        // window.Telegram access itself failed for some reason (should be rare, but never crash the app)
+        console.error('[Auth] Error accessing window.Telegram:', telegramAccessError);
       }
 
-      // No valid session
+      // Try stored token / telegramId (fallback auth, works without Telegram)
+      try {
+        const storedToken = localStorage.getItem('authToken');
+        const storedTelegramId = localStorage.getItem('telegramId');
+
+        if (storedToken || storedTelegramId) {
+          if (storedToken) setToken(storedToken);
+          console.log('[Auth] Attempting refresh from stored credentials...');
+          const refreshed = await refreshUser();
+          if (refreshed) {
+            console.log('[Auth] Session restored from local storage');
+            setIsLoading(false);
+            return;
+          }
+          console.warn('[Auth] Stored credentials were invalid or expired');
+        } else {
+          console.log('[Auth] No stored credentials found');
+        }
+      } catch (refreshError) {
+        console.error('[Auth] Error while refreshing stored session:', refreshError);
+      }
+
+      // No valid session - continue rendering the app unauthenticated instead
+      // of leaving the user stuck on a blank screen.
+      console.log('[Auth] No valid session established, continuing without auth');
       setIsLoading(false);
     };
 
-    initAuth();
+    initAuth().catch((error) => {
+      console.error('[Auth] Unexpected error during initAuth:', error);
+      setIsLoading(false);
+    });
   }, []);
 
   return (
