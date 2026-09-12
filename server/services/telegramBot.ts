@@ -4,7 +4,7 @@ import { broadcastToTelegramId } from './wsManager';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || ADMIN_TELEGRAM_ID;
-const WEBAPP_URL = 'https://chkzz.replit.app';
+const WEBAPP_URL = process.env.WEBAPP_URL || 'https://chkzz.replit.app';
 
 interface TelegramUpdate {
   update_id: number;
