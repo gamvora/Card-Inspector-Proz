@@ -227,9 +227,23 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    background-color: #09090b;
+    color: #fafafa;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'JetBrains Mono', monospace; /* Default to mono for that terminal feel */
+    min-height: 100vh;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
 
   h1, h2, h3, h4, h5, h6 {

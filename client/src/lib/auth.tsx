@@ -131,37 +131,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       setIsLoading(true);
-      
+
+      console.log('[Auth] Starting authentication. window.Telegram:', !!window.Telegram);
+
       // Always try Telegram WebApp first if available
       const tg = window.Telegram?.WebApp;
+      console.log('[Auth] Telegram WebApp detected:', !!tg, 'has initData:', !!tg?.initData);
+
       if (tg && tg.initData) {
-        tg.ready();
-        tg.expand();
-        
+        try {
+          tg.ready();
+          tg.expand();
+        } catch (error) {
+          console.error('[Auth] Error calling Telegram WebApp ready/expand:', error);
+        }
+
+        console.log('[Auth] Attempting login via Telegram initData');
         const success = await login(tg.initData);
+        console.log('[Auth] Telegram login result:', success);
         if (success) {
           setIsLoading(false);
           return;
         }
+      } else {
+        console.warn('[Auth] Telegram WebApp or initData not available. Falling back to stored session.');
       }
       
       // Try stored token
       const storedToken = localStorage.getItem('authToken');
       if (storedToken) {
+        console.log('[Auth] Found stored auth token, attempting to refresh session');
         setToken(storedToken);
         const refreshed = await refreshUser();
+        console.log('[Auth] Refresh user result:', refreshed);
         if (refreshed) {
           setIsLoading(false);
           return;
         }
         // Token was invalid, it's been cleared
+      } else {
+        console.log('[Auth] No stored auth token found');
       }
 
       // No valid session
+      console.log('[Auth] No valid session established, continuing unauthenticated');
       setIsLoading(false);
     };
 
-    initAuth();
+    initAuth().catch((error) => {
+      console.error('[Auth] initAuth failed unexpectedly:', error);
+      setIsLoading(false);
+    });
   }, []);
 
   return (
