@@ -4,7 +4,7 @@ import { broadcastToTelegramId } from './wsManager';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || ADMIN_TELEGRAM_ID;
-const WEBAPP_URL = process.env.WEBAPP_URL || 'https://chkzz.replit.app';
+const WEBAPP_URL = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : (process.env.WEBAPP_URL || 'https://chkzz.replit.app');
 
 interface TelegramUpdate {
   update_id: number;
@@ -473,9 +473,10 @@ export async function initBot(): Promise<void> {
 
   botInitialized = true;
   const isProduction = process.env.NODE_ENV === 'production' || process.env.REPL_SLUG;
+  const hasPublicDomain = !!process.env.RAILWAY_PUBLIC_DOMAIN || !!process.env.REPL_SLUG;
 
-  if (isProduction) {
-    console.log('[BOT] Production mode - using webhook only');
+  if (isProduction && hasPublicDomain) {
+    console.log(`[BOT] Production mode - using webhook only (${WEBAPP_URL})`);
     const webhookUrl = `${WEBAPP_URL}/api/telegram/webhook`;
     await setWebhook(webhookUrl);
   } else {
