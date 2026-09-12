@@ -4,7 +4,7 @@ import { broadcastToTelegramId } from './wsManager';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || ADMIN_TELEGRAM_ID;
-const WEBAPP_URL = process.env.WEBAPP_URL || 'https://chkzz.replit.app';
+const WEBAPP_URL = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : (process.env.WEBAPP_URL || 'https://chkzz.replit.app');
 
 interface TelegramUpdate {
   update_id: number;
@@ -81,8 +81,7 @@ ${isAdmin ? `
 <b>Admin Commands:</b>
 /credit [id] [amount] - Add/remove credits
 /user [id] - View user details
-/broadcast [msg] - Send to all users` : ''}
-`, 'Open NexusChecker', WEBAPP_URL);
+/broadcast [msg] - Send to all users` : ''}\n`, 'Open NexusChecker', WEBAPP_URL);
     return;
   }
 
@@ -426,6 +425,7 @@ export async function setWebhook(webhookUrl: string): Promise<boolean> {
   }
   
   try {
+    console.log(`[BOT] Setting webhook to: ${webhookUrl}`);
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -462,7 +462,8 @@ export async function deleteWebhook(): Promise<boolean> {
 
 export async function initBot(): Promise<void> {
   if (!BOT_TOKEN) {
-    console.log('[BOT] No token configured, skipping bot initialization');
+    console.log('[BOT] ⚠️  No TELEGRAM_BOT_TOKEN configured, skipping bot initialization');
+    console.log('[BOT] ⚠️  Please set TELEGRAM_BOT_TOKEN environment variable in Railway');
     return;
   }
 
@@ -473,13 +474,26 @@ export async function initBot(): Promise<void> {
 
   botInitialized = true;
   const isProduction = process.env.NODE_ENV === 'production' || process.env.REPL_SLUG;
+  const hasPublicDomain = !!process.env.RAILWAY_PUBLIC_DOMAIN || !!process.env.REPL_SLUG;
 
-  if (isProduction) {
-    console.log('[BOT] Production mode - using webhook only');
+  console.log(`[BOT] ✅ Bot token configured`);
+  console.log(`[BOT] 🌐 Public domain: ${WEBAPP_URL}`);
+  console.log(`[BOT] 📍 Admin ID: ${ADMIN_ID}`);
+
+  if (isProduction && hasPublicDomain) {
+    console.log(`[BOT] 🔌 Production mode - setting up webhook`);
     const webhookUrl = `${WEBAPP_URL}/api/telegram/webhook`;
-    await setWebhook(webhookUrl);
+    const webhookSet = await setWebhook(webhookUrl);
+    
+    if (webhookSet) {
+      console.log(`[BOT] ✅ Webhook configured successfully`);
+    } else {
+      console.log(`[BOT] ⚠️  Webhook setup failed, falling back to polling`);
+      await deleteWebhook();
+      startPolling();
+    }
   } else {
-    console.log('[BOT] Development mode - using polling');
+    console.log('[BOT] 🔄 Development/testing mode - using polling instead of webhook');
     await deleteWebhook();
     startPolling();
   }
@@ -534,10 +548,11 @@ function startPolling(): void {
   };
 
   poll().catch(console.error);
-  console.log('[BOT] Polling started');
+  console.log('[BOT] ✅ Polling started');
 }
 
 export function stopPolling(): void {
   pollingActive = false;
   console.log('[BOT] Polling stopped');
 }
+
