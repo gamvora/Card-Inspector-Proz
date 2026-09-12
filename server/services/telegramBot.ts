@@ -53,7 +53,10 @@ export async function handleBotUpdate(update: TelegramUpdate): Promise<void> {
   processedUpdates.add(update.update_id);
   cleanupProcessedUpdates();
 
-  if (!update.message?.text) return;
+  if (!update.message?.text) {
+    console.log(`[BOT] Update ${update.update_id} has no message text, ignoring`);
+    return;
+  }
 
   const { text, from, chat } = update.message;
   const senderId = from.id.toString();
@@ -374,6 +377,10 @@ export async function sendChargedCardNotification(
 }
 
 async function sendMessage(chatId: number | string, text: string): Promise<boolean> {
+  if (!BOT_TOKEN) {
+    console.error('[BOT] Cannot send message: TELEGRAM_BOT_TOKEN not configured');
+    return false;
+  }
   try {
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -384,14 +391,22 @@ async function sendMessage(chatId: number | string, text: string): Promise<boole
         parse_mode: 'HTML',
       }),
     });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      console.error(`[BOT] sendMessage failed (status ${response.status}) for chat ${chatId}: ${body}`);
+    }
     return response.ok;
   } catch (error) {
-    console.error('Error sending message:', error);
+    console.error('[BOT] Error sending message:', error);
     return false;
   }
 }
 
 async function sendMessageWithButton(chatId: number | string, text: string, buttonText: string, url: string): Promise<boolean> {
+  if (!BOT_TOKEN) {
+    console.error('[BOT] Cannot send message with button: TELEGRAM_BOT_TOKEN not configured');
+    return false;
+  }
   try {
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -412,9 +427,13 @@ async function sendMessageWithButton(chatId: number | string, text: string, butt
         }
       }),
     });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      console.error(`[BOT] sendMessageWithButton failed (status ${response.status}) for chat ${chatId}: ${body}`);
+    }
     return response.ok;
   } catch (error) {
-    console.error('Error sending message with button:', error);
+    console.error('[BOT] Error sending message with button:', error);
     return false;
   }
 }
@@ -461,8 +480,12 @@ export async function deleteWebhook(): Promise<boolean> {
 }
 
 export async function initBot(): Promise<void> {
+  console.log('[BOT] initBot() called');
+  console.log(`[BOT] Token configured: ${BOT_TOKEN ? 'yes' : 'no'}`);
+  console.log(`[BOT] WEBAPP_URL: ${WEBAPP_URL}`);
+
   if (!BOT_TOKEN) {
-    console.log('[BOT] No token configured, skipping bot initialization');
+    console.log('[BOT] No token configured (TELEGRAM_BOT_TOKEN missing), skipping bot initialization');
     return;
   }
 
@@ -475,14 +498,24 @@ export async function initBot(): Promise<void> {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.REPL_SLUG;
   const hasPublicDomain = !!process.env.RAILWAY_PUBLIC_DOMAIN || !!process.env.REPL_SLUG;
 
-  if (isProduction && hasPublicDomain) {
-    console.log(`[BOT] Production mode - using webhook only (${WEBAPP_URL})`);
-    const webhookUrl = `${WEBAPP_URL}/api/telegram/webhook`;
-    await setWebhook(webhookUrl);
-  } else {
-    console.log('[BOT] Development mode - using polling');
-    await deleteWebhook();
-    startPolling();
+  console.log(`[BOT] isProduction=${!!isProduction} hasPublicDomain=${hasPublicDomain}`);
+
+  try {
+    if (isProduction && hasPublicDomain) {
+      console.log(`[BOT] Production mode - using webhook only (${WEBAPP_URL})`);
+      const webhookUrl = `${WEBAPP_URL}/api/telegram/webhook`;
+      const success = await setWebhook(webhookUrl);
+      console.log(`[BOT] Webhook setup ${success ? 'succeeded' : 'failed'} for ${webhookUrl}`);
+    } else {
+      console.log('[BOT] Development mode - using polling');
+      await deleteWebhook();
+      startPolling();
+    }
+    console.log('[BOT] Initialization complete');
+  } catch (error) {
+    console.error('[BOT] Error during bot initialization:', error);
+    botInitialized = false;
+    throw error;
   }
 }
 

@@ -33,9 +33,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  console.log("[ROUTES] Registering application routes...");
 
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   setWss(wss);
+  console.log("[ROUTES] WebSocket server attached at /ws");
 
   const broadcastAll = (data: any) => {
     const payload = JSON.stringify(data);
@@ -762,6 +764,7 @@ export async function registerRoutes(
       await handleBotUpdate(update);
       res.json({ ok: true });
     } catch (e: any) {
+      console.error('[ROUTES] Error handling Telegram webhook update:', e);
       res.status(400).json({ error: e.message });
     }
   });
@@ -774,7 +777,15 @@ export async function registerRoutes(
     res.json({ status: 'ok' });
   });
 
-  initBot();
+  console.log("[ROUTES] All HTTP routes registered.");
+
+  try {
+    console.log("[ROUTES] Initializing Telegram bot...");
+    await initBot();
+    console.log("[ROUTES] Telegram bot initialization completed.");
+  } catch (err) {
+    console.error("[ROUTES] Failed to initialize Telegram bot:", err);
+  }
 
   return httpServer;
 }
