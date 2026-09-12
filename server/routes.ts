@@ -757,12 +757,19 @@ export async function registerRoutes(
   });
 
   app.post('/api/telegram/webhook', async (req, res) => {
+    // Always acknowledge Telegram immediately so it doesn't retry/backoff the webhook.
+    // Errors are logged but don't surface as failed deliveries to Telegram.
+    res.json({ ok: true });
+
     try {
       const update = req.body;
+      if (!update || typeof update !== 'object') {
+        console.error('[BOT] Webhook received invalid payload');
+        return;
+      }
       await handleBotUpdate(update);
-      res.json({ ok: true });
     } catch (e: any) {
-      res.status(400).json({ error: e.message });
+      console.error('[BOT] Error handling webhook update:', e);
     }
   });
 

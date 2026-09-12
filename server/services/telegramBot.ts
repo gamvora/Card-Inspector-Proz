@@ -4,7 +4,13 @@ import { broadcastToTelegramId } from './wsManager';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || ADMIN_TELEGRAM_ID;
-const WEBAPP_URL = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : (process.env.WEBAPP_URL || 'https://chkzz.replit.app');
+
+// Railway automatically injects RAILWAY_PUBLIC_DOMAIN for services with a public network.
+// Prefer it in production so the webhook always points at the live deployment URL.
+const RAILWAY_PUBLIC_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN;
+const WEBAPP_URL = RAILWAY_PUBLIC_DOMAIN
+  ? `https://${RAILWAY_PUBLIC_DOMAIN}`
+  : (process.env.WEBAPP_URL || 'https://chkzz.replit.app');
 
 interface TelegramUpdate {
   update_id: number;
@@ -49,13 +55,27 @@ export async function handleBotUpdate(update: TelegramUpdate): Promise<void> {
     console.log(`[BOT] Skipping duplicate update: ${update.update_id}`);
     return;
   }
-  
+
   processedUpdates.add(update.update_id);
   cleanupProcessedUpdates();
 
   if (!update.message?.text) return;
 
-  const { text, from, chat } = update.message;
+  try {
+    await processMessage(update);
+  } catch (error) {
+    console.error(`[BOT] Error processing update ${update.update_id}:`, error);
+    // Try to let the user know something went wrong instead of silently failing.
+    const chatId = update.message?.chat?.id;
+    if (chatId) {
+      await sendMessage(chatId, 'Something went wrong while processing your request. Please try again.').catch(() => {});
+    }
+  }
+}
+
+async function processMessage(update: TelegramUpdate): Promise<void> {
+  const { from, chat } = update.message!;
+  const text: string = update.message!.text!;
   const senderId = from.id.toString();
   const isAdmin = senderId === ADMIN_ID;
 
@@ -419,28 +439,58 @@ async function sendMessageWithButton(chatId: number | string, text: string, butt
   }
 }
 
-export async function setWebhook(webhookUrl: string): Promise<boolean> {
-  if (webhookSet) {
+export async function getWebhookInfo(): Promise<any> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo`, {
+      method: 'GET',
+    });
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('[BOT] Error getting webhook info:', error);
+    return null;
+  }
+}
+
+export async function setWebhook(webhookUrl: string, force = false): Promise<boolean> {
+  if (webhookSet && !force) {
     console.log('[BOT] Webhook already set, skipping');
     return true;
   }
-  
+
+  console.log(`[BOT] Setting webhook to: ${webhookUrl}`);
+
   try {
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         url: webhookUrl,
         drop_pending_updates: true,
-        allowed_updates: ['message']
+        allowed_updates: ['message'],
       }),
     });
-    const result = await response.json();
-    console.log('[BOT] Webhook set result:', result);
-    webhookSet = response.ok;
-    return response.ok;
+    const result = await response.json() as { ok: boolean; description?: string };
+
+    if (!response.ok || !result.ok) {
+      console.error('[BOT] Failed to set webhook:', result);
+      webhookSet = false;
+      return false;
+    }
+
+    console.log('[BOT] Webhook set successfully:', result.description || 'OK');
+    webhookSet = true;
+
+    // Verify the webhook is actually registered with Telegram
+    const info = await getWebhookInfo();
+    if (info?.ok) {
+      console.log(`[BOT] Webhook verification - URL: ${info.result?.url}, pending updates: ${info.result?.pending_update_count}, last error: ${info.result?.last_error_message || 'none'}`);
+    }
+
+    return true;
   } catch (error) {
     console.error('[BOT] Error setting webhook:', error);
+    webhookSet = false;
     return false;
   }
 }
@@ -452,6 +502,12 @@ export async function deleteWebhook(): Promise<boolean> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ drop_pending_updates: true }),
     });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      console.error('[BOT] Failed to delete webhook:', result);
+    } else {
+      console.log('[BOT] Webhook deleted, switching to polling mode');
+    }
     webhookSet = false;
     return response.ok;
   } catch (error) {
@@ -462,7 +518,7 @@ export async function deleteWebhook(): Promise<boolean> {
 
 export async function initBot(): Promise<void> {
   if (!BOT_TOKEN) {
-    console.log('[BOT] No token configured, skipping bot initialization');
+    console.error('[BOT] TELEGRAM_BOT_TOKEN is not set - bot will not be initialized. Set this variable in Railway to enable the bot.');
     return;
   }
 
@@ -472,15 +528,34 @@ export async function initBot(): Promise<void> {
   }
 
   botInitialized = true;
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.REPL_SLUG;
-  const hasPublicDomain = !!process.env.RAILWAY_PUBLIC_DOMAIN || !!process.env.REPL_SLUG;
+
+  const isProduction = process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG || !!RAILWAY_PUBLIC_DOMAIN;
+  const hasPublicDomain = !!RAILWAY_PUBLIC_DOMAIN || !!process.env.REPL_SLUG || !!process.env.WEBAPP_URL;
+
+  console.log(`[BOT] Initializing bot - NODE_ENV=${process.env.NODE_ENV || 'undefined'}, RAILWAY_PUBLIC_DOMAIN=${RAILWAY_PUBLIC_DOMAIN || 'not set'}, resolved WEBAPP_URL=${WEBAPP_URL}`);
 
   if (isProduction && hasPublicDomain) {
-    console.log(`[BOT] Production mode - using webhook only (${WEBAPP_URL})`);
     const webhookUrl = `${WEBAPP_URL}/api/telegram/webhook`;
-    await setWebhook(webhookUrl);
+    console.log(`[BOT] Production mode detected - configuring webhook at ${webhookUrl}`);
+
+    let success = await setWebhook(webhookUrl, true);
+
+    // Retry once after a short delay in case of transient network issues on boot
+    if (!success) {
+      console.warn('[BOT] Initial webhook setup failed, retrying in 5s...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      success = await setWebhook(webhookUrl, true);
+    }
+
+    if (success) {
+      console.log('[BOT] Bot is ready and listening for webhook updates.');
+    } else {
+      console.error('[BOT] Could not configure webhook after retry. Falling back to polling so the bot keeps working.');
+      await deleteWebhook();
+      startPolling();
+    }
   } else {
-    console.log('[BOT] Development mode - using polling');
+    console.log('[BOT] No public domain detected - using polling (development mode)');
     await deleteWebhook();
     startPolling();
   }
