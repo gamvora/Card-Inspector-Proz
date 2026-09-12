@@ -20,19 +20,26 @@ export function Captcha({ onVerified }: CaptchaProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchCaptcha = async () => {
     setIsLoading(true);
     setError("");
     setAnswer("");
+    setFetchFailed(false);
     try {
       const res = await fetch("/api/captcha");
       if (!res.ok) throw new Error("Failed to load captcha");
       const data = await res.json();
+      if (!data || !data.id || !data.numbers) {
+        throw new Error("Invalid captcha payload");
+      }
       setCaptcha(data);
     } catch (e) {
-      setError("Failed to load captcha. Please try again.");
+      console.error("[Captcha] Failed to load captcha, allowing bypass:", e);
+      setError("Captcha service unavailable. You can continue without it.");
+      setFetchFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -223,21 +230,37 @@ export function Captcha({ onVerified }: CaptchaProps) {
             )}
           </AnimatePresence>
 
-          <Button
-            className="w-full"
-            onClick={handleVerify}
-            disabled={isVerifying || isLoading || answer.length !== 4}
-            data-testid="button-verify-captcha"
-          >
-            {isVerifying ? (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Verifying...
-              </>
-            ) : (
-              "Verify"
-            )}
-          </Button>
+          {!fetchFailed && (
+            <Button
+              className="w-full"
+              onClick={handleVerify}
+              disabled={isVerifying || isLoading || answer.length !== 4}
+              data-testid="button-verify-captcha"
+            >
+              {isVerifying ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify"
+              )}
+            </Button>
+          )}
+
+          {fetchFailed && (
+            <Button
+              className="w-full"
+              onClick={() => {
+                console.warn("[Captcha] Bypassing captcha because the service is unavailable");
+                localStorage.setItem("captcha_verified", Date.now().toString());
+                onVerified();
+              }}
+              data-testid="button-continue-without-captcha"
+            >
+              Continue
+            </Button>
+          )}
 
           {attempts > 0 && (
             <p className="text-xs text-center text-muted-foreground">

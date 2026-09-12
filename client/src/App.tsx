@@ -10,6 +10,7 @@ import { TutorialProvider } from "@/lib/tutorial-context";
 import { useState, useEffect } from "react";
 import { initBackgroundMusic } from "@/components/BackgroundMusic";
 import { Captcha, isCaptchaVerified } from "@/components/Captcha";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Home from "@/pages/Home";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -21,10 +22,21 @@ function AppContent() {
   const { isLoading, isAuthenticated, user } = useAuth();
   const [showLoading, setShowLoading] = useState(true);
   const [loadingComplete, setLoadingComplete] = useState(false);
-  const [captchaVerified, setCaptchaVerified] = useState(() => isCaptchaVerified());
+  const [captchaVerified, setCaptchaVerified] = useState(() => {
+    try {
+      return isCaptchaVerified();
+    } catch (error) {
+      console.error("[App] Failed to read captcha verification state:", error);
+      return false;
+    }
+  });
 
   useEffect(() => {
-    initBackgroundMusic();
+    try {
+      initBackgroundMusic();
+    } catch (error) {
+      console.error("[App] initBackgroundMusic failed (non-fatal):", error);
+    }
   }, []);
 
   useEffect(() => {
@@ -33,14 +45,27 @@ function AppContent() {
     }
   }, [isLoading, loadingComplete]);
 
+  useEffect(() => {
+    console.log("[App] state:", {
+      isLoading,
+      isAuthenticated,
+      captchaVerified,
+      showLoading,
+      loadingComplete,
+    });
+  }, [isLoading, isAuthenticated, captchaVerified, showLoading, loadingComplete]);
+
   if (!captchaVerified) {
+    console.log("[App] Rendering Captcha screen");
     return <Captcha onVerified={() => setCaptchaVerified(true)} />;
   }
 
   if (showLoading) {
+    console.log("[App] Rendering Loading screen");
     return <Loading onComplete={() => setLoadingComplete(true)} />;
   }
 
+  console.log("[App] Rendering main routes");
   return (
     <Switch>
       <Route path="/" component={Home} />
@@ -53,23 +78,28 @@ function AppContent() {
 }
 
 function App() {
+  console.log("[App] App component mounting");
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <CheckerProvider>
-          <ThemeProvider>
-            <TutorialProvider>
-              <TooltipProvider>
-                <div className="min-h-screen bg-background text-foreground">
-                  <AppContent />
-                  <Toaster />
-                </div>
-              </TooltipProvider>
-            </TutorialProvider>
-          </ThemeProvider>
-        </CheckerProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <CheckerProvider>
+            <ThemeProvider>
+              <TutorialProvider>
+                <TooltipProvider>
+                  <div className="min-h-screen bg-background text-foreground">
+                    <ErrorBoundary>
+                      <AppContent />
+                    </ErrorBoundary>
+                    <Toaster />
+                  </div>
+                </TooltipProvider>
+              </TutorialProvider>
+            </ThemeProvider>
+          </CheckerProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
